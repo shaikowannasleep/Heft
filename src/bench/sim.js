@@ -115,7 +115,7 @@ function claimedArea(W) {
 export function buildWorld(level, opts = {}) {
   const strat = STRATEGIES[opts.strategy] ?? STRATEGIES.claims;
   const W = {
-    t: 0, clock: 0, day: level.day, day0: level.day, dayTime: level.dayTime, night: false, nightSeen: false, nextRegrow: 1, nextTrail: 0,
+    t: 0, clock: 0, day: level.day, day0: level.day, dayTime: level.dayTime, dayTime0: level.dayTime, night: false, nightSeen: false, nextRegrow: 1, nextTrail: 0,
     rng: D.mulberry32(opts.seed ?? 1), strat, plan: [...strat.plan], pi: 0, idx: new Map(),
     cover: new Int32Array(N * N), outside: new Uint8Array(N * N), root: new Uint8Array(N * N),
     gs: new Uint32Array(N * N), cl: new Uint32Array(N * N), gv: new Float32Array(N * N), from: new Int32Array(N * N), gen: 0,
@@ -522,16 +522,20 @@ export function* simRun(level, opts = {}) {
 export function runSim(level, opts) { const g = simRun(level, opts); let r; while (!(r = g.next()).done); return r.value; }
 
 function summarize(W, H, opts) {
-  const firstBuy = type => W.builds.find(b => b.type === type)?.t ?? null;
+  // absolute game clock for a run time t: level start day and dayTime offset included
+  const at = t => t == null ? null : { t, day: W.day0 + Math.floor((W.dayTime0 * DAY + t) / DAY), sec: Math.round((W.dayTime0 * DAY + t) % DAY) };
+  const firstBuy = type => at(W.builds.find(b => b.type === type)?.t ?? null);
   const upDone = UP_ITEMS.every(it => W.up[upKey(it)] >= upLvl(it));
-  const lastUp = upDone ? Math.max(...W.buys.map(b => b.t)) : null;
+  // already maxed at the start: nothing was bought, so the milestone is the start itself (day 1 of the sim)
+  const lastUp = upDone ? (W.buys.length ? W.buys[W.buys.length - 1].t : 0) : null;
+  const lastDay = upDone ? (W.buys.length ? W.buys[W.buys.length - 1].day : 1) : null;
   return {
     strategy: opts.strategy ?? 'claims', seed: opts.seed ?? 1, days: H, steps: Math.round(H * DAY / DT),
-    dayTime0: null, day0: W.day0, nightStart: W.nightStart, night1: W.night1,
+    dayTime0: W.dayTime0, day0: W.day0, nightStart: W.nightStart, night1: W.night1,
     dayStats: W.days.map(d => ({ ...d })),
     deps: W.deps, hauls: W.hauls, builds: W.builds, buys: W.buys, harvest: W.harvest, regrow: W.regrow,
     exposed: W.exposed, idle: W.idle, trail: Float32Array.from(W.trail), up: { ...W.up }, stock: { ...W.stock },
-    milestones: { campfire: firstBuy('campfire'), workbench: firstBuy('workbench'), allUpgrades: lastUp, allUpgradesDay: lastUp == null ? null : W.buys[W.buys.length - 1].day },
+    milestones: { campfire: firstBuy('campfire'), workbench: firstBuy('workbench'), allUpgrades: at(lastUp), allUpgradesDay: lastDay },
     reserve: W.res.filter(r => present(r)).reduce((a, r) => (a[typeOf(r)] += r.hp, a), { wood: 0, stone: 0 }),
   };
 }

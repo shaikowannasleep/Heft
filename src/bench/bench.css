@@ -34,3 +34,13 @@ table.bn-tab, table.sv-tab { border-collapse: collapse; width: 100%; font-family
 .sv-block b, .sv-issues .sv-block b { color: var(--err); }
 .sv-warn b { color: var(--warn); }
 .sv-hint b { color: var(--accent); }
+/* previous numbers stay visible but dimmed while an edit is pending or the last run failed */
+.bn-body, .sv-body { display: flex; flex-direction: column; gap: 8px; min-height: 0; transition: opacity .15s; }
+.bn.stale .bn-body, .sv.stale .sv-body { opacity: .45; }
+.sv-badge.stale { opacity: .6; font-style: italic; }
+.sv-fail { color: var(--err); font-family: var(--mono); font-size: 11px; }
+.sv-fail:empty { display: none; }
+.sv-more { color: var(--fg3); }
+.bn-legend { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; color: var(--fg2); font-size: 11px; }
+.bn-legend i { display: inline-block; width: 14px; height: 3px; margin-right: 4px; vertical-align: middle; border-radius: 2px; }
+.sv-count { color: var(--fg2); font-family: var(--mono); font-size: 11px; }

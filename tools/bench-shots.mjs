@@ -21,26 +21,35 @@ const show = async id => {
     : !!document.querySelector('.sv-badge') && document.querySelector('.sv-badge').textContent !== 'checking...', id, { timeout: 60000 });
 };
 const badge = () => page.evaluate(() => document.querySelector('.sv-badge')?.textContent);
+// edit-to-result: the fast verdict (status 'refining') and the full pass (final status with runs and ms) as seen on the statusbar
+const statusText = () => page.evaluate(() => document.querySelector('.statusbar')?.textContent ?? '');
+const FINAL = /bench: (SOLVABLE|AT RISK|UNSOLVABLE|STATIC OK) · \d+ runs · \d+ ms/;
+const timeEdit = async (label, code) => {
+  const before = await statusText(), t0 = Date.now();
+  await page.evaluate(code);
+  const fast = await page.waitForFunction(() => /\(fast\) · refining/.test(document.querySelector('.statusbar')?.textContent ?? ''), null, { timeout: 60000, polling: 10 }).then(() => Date.now() - t0).catch(() => null);
+  await page.waitForFunction(b => { const t = document.querySelector('.statusbar')?.textContent ?? ''; return t !== b && /bench: (SOLVABLE|AT RISK|UNSOLVABLE|STATIC OK) · \d+ runs · \d+ ms/.test(t); }, before, { timeout: 60000, polling: 10 });
+  const full = Date.now() - t0;
+  console.log(`edit ${label}: fast verdict ${fast ?? 'n/a'} ms, full result ${full} ms`, (await statusText()).match(/bench:.*?ms/)?.[0]);
+};
 
 await show('bench');
 console.log('default bench:', await page.evaluate(() => document.querySelector('.bn-status').textContent));
 await page.screenshot({ path: `${out}/bench-default.png` });
 await page.locator('.bn').first().screenshot({ path: `${out}/bench-panel-default.png` });
 await show('solvability');
-const before = await badge();
-console.log('default verdict:', before, await page.evaluate(() => [...document.querySelectorAll('.sv-issues li')].map(li => li.textContent)));
+
+console.log('default verdict:', await badge(), await page.evaluate(() => [...document.querySelectorAll('.sv-issues li')].map(li => li.textContent)));
 await page.locator('.sv').first().screenshot({ path: `${out}/bench-solv-default.png` });
 
 // breaking edit: a ring of palisades 2.6 m around the spawn walls the player in
-const t0 = Date.now();
-await page.evaluate(() => window.studio.store.update('break-ring', p => {
+await timeEdit('break-ring', () => window.studio.store.update('break-ring', p => {
   for (let k = 0; k < 12; k++) {
     const a = k * Math.PI / 6;
     p.level.structures.push({ id: 9000 + k, type: 'wall', x: 1.4 + 2.6 * Math.cos(a), z: 4.2 + 2.6 * Math.sin(a), rot: a + Math.PI / 2 });
   }
 }));
-await page.waitForFunction(b => document.querySelector('.sv-badge')?.textContent !== b && document.querySelector('.sv-badge')?.textContent !== 'checking...', before, { timeout: 60000 });
-console.log('breaking verdict:', await badge(), 'after', Date.now() - t0, 'ms wall time');
+console.log('breaking verdict:', await badge());
 console.log(await page.evaluate(() => [...document.querySelectorAll('.sv-issues li')].slice(0, 5).map(li => li.textContent)));
 await page.screenshot({ path: `${out}/bench-breaking.png` });
 await page.locator('.sv').first().screenshot({ path: `${out}/bench-solv-breaking.png` });

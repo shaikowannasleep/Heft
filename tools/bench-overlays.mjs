@@ -14,6 +14,18 @@ await page.goto(url);
 await page.waitForFunction(() => window.studio?.bag?.dock && document.querySelector('.bn-status'), null, { timeout: 30000 });
 await page.waitForFunction(() => /runs, \d+ ms/.test(document.querySelector('.bn-status')?.textContent ?? ''), null, { timeout: 60000 });
 
+// 2D paint counts on the default level (the trail only moves when the bot can walk)
+const paintAll = () => page.evaluate(() => {
+  const canvas = document.createElement('canvas'); canvas.width = canvas.height = 900;
+  const g = canvas.getContext('2d'), view = { scale: 8, toScreen: (x, z) => [450 + x * 8, 450 + z * 8] };
+  const out = {};
+  for (const o of window.studio.bag.overlays.filter(o => o.id.startsWith('bench.'))) {
+    g.clearRect(0, 0, 900, 900); o.draw2d(g, view);
+    const d = g.getImageData(0, 0, 900, 900).data; let n = 0; for (let i = 3; i < d.length; i += 4) if (d[i]) n++; out[o.id] = n;
+  }
+  return out;
+});
+console.log('default level 2D paint:', JSON.stringify(await paintAll()));
 // the walled-in state: a palisade ring around the spawn (same edit as bench-shots.mjs)
 const before = await page.evaluate(() => document.querySelector('.bn-status').textContent);
 await page.evaluate(() => window.studio.store.update('break-ring', p => {
@@ -21,7 +33,7 @@ await page.evaluate(() => window.studio.store.update('break-ring', p => {
 }));
 await page.waitForFunction(b => document.querySelector('.bn-status')?.textContent !== b && /runs, \d+ ms/.test(document.querySelector('.bn-status').textContent), before, { timeout: 60000 });
 
-const result = await page.evaluate(() => {
+const result = await page.evaluate(async () => {
   const canvas = document.createElement('canvas'); canvas.width = canvas.height = 900;
   const g = canvas.getContext('2d');
   // fake view: 8 px per metre, world (0,0) at the canvas centre, z down
@@ -38,12 +50,21 @@ const result = await page.evaluate(() => {
   // composite with every bench overlay on, to check that they line up with each other
   g.clearRect(0, 0, 900, 900);
   window.studio.bag.overlays.filter(o => o.id.startsWith('bench.')).forEach(o => { o.enabled = true; o.draw2d(g, view); });
-  return { painted, png: canvas.toDataURL('image/png'), enabled: ids.map(o => [o.id, o.enabled, o.rev]) };
+  // Scene 3D: object3d(THREE) for the overlays that have one, with a THREE build from the dev server's dep cache
+  const T = await import('/node_modules/.vite/deps/three.js');
+  const objects = {};
+  for (const o of ids.filter(o => o.object3d)) {
+    const obj = o.object3d(T), count = (x) => { let n = 0; x.traverse(c => { if (c.geometry?.attributes?.position) n += c.geometry.attributes.position.count; }); return n; };
+    objects[o.id] = count(obj);
+  }
+  return { painted, objects, png: canvas.toDataURL('image/png'), enabled: ids.map(o => [o.id, o.enabled, o.rev]) };
 });
-console.log(JSON.stringify({ painted: result.painted, enabled: result.enabled }));
+console.log(JSON.stringify({ painted: result.painted, objects: result.objects, enabled: result.enabled }));
 writeFileSync(`${out}/bench-overlays.png`, Buffer.from(result.png.split(',')[1], 'base64'));
 const zero = Object.entries(result.painted).filter(([, n]) => n === 0).map(([k]) => k);  // a walled-in state must paint the walled overlay
 console.log('overlays painting nothing:', zero.length ? zero : 'none');
+const noObj = ['bench.claims', 'bench.walled', 'bench.trail'].filter(id => !(result.objects[id] > 0));
+console.log('Scene 3D overlays with no vertices:', noObj.length ? noObj : 'none');
 console.log('page errors:', errors.length ? errors : 'none');
 await browser.close();
 if (errors.length) process.exit(1);

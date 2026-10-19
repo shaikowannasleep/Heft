@@ -42,3 +42,15 @@ test('walled-in tree is never harvested', () => {
   const r = runSim(lvl, { days: 1, seed: 1, strategy: 'roam' });
   assert.equal(r.harvest.wood, 0);
 });
+
+// Round 2 P2-9: milestones carry the level's start day and dayTime offset
+import * as Dsim from '../src/core/heft-data.js';
+test('milestones are absolute game times: start day and dayTime offset included', () => {
+  const lvl = { ...Dsim.newProject(42).level, day: 3, dayTime: 0.69, upgrades: { pack: 3, tool: 3 } };
+  const r = runSim(lvl, { days: 1, seed: 1, strategy: 'claims' });
+  assert.deepEqual(r.milestones.allUpgrades, { t: 0, day: 3, sec: Math.round(0.69 * Dsim.DAY_LEN) });
+  const rb = runSim(Dsim.newProject(42).level, { days: 2, seed: 1, strategy: 'claims' });
+  const cf = rb.milestones.campfire;
+  assert.ok(cf && cf.day >= 1 && cf.sec >= 0 && cf.sec < Dsim.DAY_LEN, JSON.stringify(cf));
+  assert.equal(cf.day, 1 + Math.floor((rb.dayTime0 * Dsim.DAY_LEN + cf.t) / Dsim.DAY_LEN));
+});
