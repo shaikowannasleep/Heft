@@ -1,6 +1,6 @@
 // Project database: revisions in a key-value adapter (IndexedDB or memory). A revision is a base snapshot (.heftb)
 // or a delta (HEFD ops) against the previous revision. Retention keeps the last N, hourly for a day, daily for a
-// week, and the newest autosaves under a byte ring. GC writes rebuilt revisions before it deletes old ones.
+// week, and the newest autosaves under a byte ring. GC runs in three steps so a replay never reads a deleted record.
 import { encodeHeftb, decodeHeftb, encodeDelta, decodeDelta, HeftbError } from './codec.js';
 import { diff, apply, summarize } from './diff.js';
 
@@ -8,12 +8,12 @@ export const LIMITS = {
   keepLast: 20, hourMs: 3600e3, dayMs: 86400e3, weekMs: 7 * 86400e3,
   ringBytes: 512 << 10,   // autosave bytes kept (oldest autosaves go first)
   chain: 32,              // deltas in a row before a base snapshot
-  warnFree: 16 << 20, margin: 256 << 10,   // warn below warnFree; refuse writes that would leave less than margin
+  warnFree: 16 << 20, margin: 64 << 10,   // warn below warnFree; refuse writes that grow storage past the margin
   chunk: 64,              // revisions per GC transaction
 };
 
 export class QuotaError extends Error {
-  constructor(need, free) { super(`Not enough browser storage: ${free} bytes free, ${need} needed. Export a .heftb, then compact or delete old revisions.`); this.name = 'QuotaError'; }
+  constructor(need, free) { super(`Not enough browser storage: ${free} bytes free, ${need} needed. Your project is unchanged. Export a .heftb backup, then delete old revisions or Compact to free space.`); this.name = 'QuotaError'; }
 }
 
 // Seqs to keep. Pure: depends only on revision metadata and the clock.
@@ -66,8 +66,16 @@ export class ProjectDB {
     await this.#write([{ store: 'revs', value: v }], 0);
     this.revs.set(r.seq, v);
   }
-  remove(seq) {
-    return this.run(() => this.#gc(keepSet([...this.revs.values()], this.headSeq, this.now(), this.lim), seq));
+  // Deleting the newest revision first saves `current` as a new head, so the open project is never lost.
+  remove(seq, current) {
+    return this.run(async () => {
+      if (!this.revs.has(seq)) return 0;
+      if (seq === this.headSeq) {
+        if (current === undefined) throw new HeftbError('pass the open project to delete the newest revision');
+        await this.#commit(current, { label: 'before delete', force: true });
+      }
+      return this.#gc(keepSet([...this.revs.values()], this.headSeq, this.now(), this.lim), seq);
+    });
   }
   // Retention + GC. Returns the stored bytes before and after.
   compact() {
@@ -104,16 +112,15 @@ export class ProjectDB {
   // Number of deltas back to the nearest base snapshot.
   #depth(seq) { let n = 0, r = this.revs.get(seq); while (r.kind === 'delta') { if (++n > 100000) throw new HeftbError('revision chain loops'); r = this.revs.get(r.prev); } return n; }
 
-  async #commit(project, { label = 'autosave', auto = true, pin = false } = {}) {
+  async #commit(project, { label = 'autosave', auto = true, pin = false, force = false } = {}) {
     if (this.headSeq != null && this.cur?.seq !== this.headSeq) this.cur = { seq: this.headSeq, project: this.#head() };
     const head = this.cur && this.revs.get(this.headSeq);
     let kind = 'base', prev = null, data, ops = null;
     if (head) {
       ops = diff(this.cur.project, project);
-      if (!ops.length) { if (pin && !head.pinned) await this.#setPinned(head, true); return { seq: head.seq, kind: head.kind, bytes: head.bytes, skipped: true }; }
+      if (!ops.length && !force) { if (pin && !head.pinned) await this.#setPinned(head, true); return { seq: head.seq, kind: head.kind, bytes: head.bytes, skipped: true }; }
       data = encodeDelta(ops);
-      const base = this.#baseBytes(head.seq);
-      if (this.#depth(head.seq) + 1 < this.lim.chain && data.length < base) { kind = 'delta'; prev = head.seq; }
+      if (this.#depth(head.seq) + 1 < this.lim.chain && data.length < this.#baseBytes(head.seq)) { kind = 'delta'; prev = head.seq; }
     }
     if (kind === 'base') data = encodeHeftb(project);
     const rec = { seq: this.next, kind, prev, at: this.now(), label, auto, pinned: pin, bytes: data.length, data };
@@ -125,26 +132,34 @@ export class ProjectDB {
   }
   #baseBytes(seq) { let r = this.revs.get(seq); while (r.kind === 'delta') r = this.revs.get(r.prev); return r.bytes; }
 
-  // Quota guard: refuse a write that would leave less than the margin, and warn before that point.
-  async #write(ops, need) {
-    const e = await this.a.estimate?.();
-    if (e && e.quota - e.usage < need + this.lim.margin) throw new QuotaError(need, Math.max(0, e.quota - e.usage));
+  // Quota guard on net growth: a write that frees as much as it adds (pin, delete) always goes through. Saves keep
+  // the margin free; GC passes reserve 0, since its rebuilds are what makes room.
+  async #write(ops, net, reserve = this.lim.margin) {
+    if (net > 0) {
+      const e = await this.a.estimate?.();
+      if (e && e.quota - e.usage < net + reserve) throw new QuotaError(net, Math.max(0, e.quota - e.usage));
+    }
     try { await this.a.write(ops); }
-    catch (err) { if (/quota/i.test(err.name)) throw new QuotaError(need, 0); throw err; }
+    catch (err) { if (/quota/i.test(err.name)) throw new QuotaError(net, 0); throw err; }
   }
 
-  // Retained revisions are kept. A kept delta whose predecessor is dropped is rebuilt against the nearest kept
-  // predecessor (or as a base when that is not smaller). New records are written before the dropped ones are deleted.
+  // Three steps. (1) Drop revisions no kept delta reads: frees space, cannot break a replay. (2) Rebuild kept deltas
+  // whose predecessor goes away, against the nearest kept one (or as a base); written before step 3. (3) Drop the rest.
   async #gc(keep, removing = null) {
     const all = [...this.revs.values()].sort((a, b) => a.seq - b.seq);
-    const drop = all.filter(r => !keep.has(r.seq) || r.seq === removing).map(r => r.seq);
+    const drop = all.filter(r => !keep.has(r.seq) || r.seq === removing);
     if (!drop.length) return 0;
+    const dropSeq = new Set(drop.map(r => r.seq)), onChain = new Set();
+    for (const r of all) {
+      if (dropSeq.has(r.seq)) continue;
+      for (let q = r; q.kind === 'delta' && this.revs.has(q.prev) && dropSeq.has(q.prev) && !onChain.has(q.prev); q = this.revs.get(q.prev)) onChain.add(q.prev);
+    }
     const memo = new Map(), depth = new Map(), puts = [];
     let prevKept = null;
     for (const r of all) {
-      if (!keep.has(r.seq) || r.seq === removing) continue;
+      if (dropSeq.has(r.seq)) continue;
       let rec = r;
-      if (r.kind === 'delta' && (r.prev == null || !keep.has(r.prev) || r.prev === removing)) {
+      if (r.kind === 'delta' && (r.prev == null || dropSeq.has(r.prev))) {
         const project = this.#state(r.seq, memo), full = encodeHeftb(project);
         const d = prevKept && depth.get(prevKept.seq) + 1 < this.lim.chain ? encodeDelta(diff(this.#state(prevKept.seq, memo), project)) : null;
         rec = d && d.length < full.length ? { ...r, prev: prevKept.seq, data: d, bytes: d.length } : { ...r, kind: 'base', prev: null, data: full, bytes: full.length };
@@ -153,15 +168,26 @@ export class ProjectDB {
       depth.set(rec.seq, rec.kind === 'base' ? 0 : depth.get(rec.prev) + 1);
       prevKept = rec;
     }
+    const free = drop.filter(r => !onChain.has(r.seq)).map(r => r.seq), later = drop.filter(r => onChain.has(r.seq)).map(r => r.seq);
+    // Each transaction is atomic. The last rebuild batch also deletes the revisions it replaces, so its net is measured
+    // as one: a rebuild bigger than what it replaces is allowed when the deletes in the same transaction pay for it.
+    const sizeOf = seqs => seqs.reduce((n, s) => n + this.revs.get(s).bytes, 0);
+    const tx = chunks(free, this.lim.chunk).map(seqs => ({ ops: seqs.map(del => ({ store: 'revs', del })), net: -sizeOf(seqs) }));
+    const pc = chunks(puts, this.lim.chunk);
+    pc.forEach((batch, i) => {
+      const dels = i === pc.length - 1 ? later : [];
+      tx.push({ ops: [...batch.map(value => ({ store: 'revs', value })), ...dels.map(del => ({ store: 'revs', del }))],
+        net: batch.reduce((n, r) => n + r.bytes - this.revs.get(r.seq).bytes, 0) - sizeOf(dels) });
+    });
+    if (!pc.length && later.length) tx.push({ ops: later.map(del => ({ store: 'revs', del })), net: -sizeOf(later) });
     try {
-      for (const chunk of chunks(puts, this.lim.chunk)) await this.#write(chunk.map(value => ({ store: 'revs', value })), chunk.reduce((n, r) => n + r.bytes, 0));
-      for (const chunk of chunks(drop, this.lim.chunk)) await this.#write(chunk.map(del => ({ store: 'revs', del })), 0);
+      for (const t of tx) await this.#write(t.ops, t.net, 0);
     } catch (e) {
       await this.#reload();   // memory may be ahead of the store after a partial GC: re-read it
       throw e;
     }
     for (const r of puts) this.revs.set(r.seq, r);
-    for (const s of drop) this.revs.delete(s);
+    for (const s of drop.map(r => r.seq)) this.revs.delete(s);
     if (!this.revs.has(this.headSeq)) { this.headSeq = this.revs.size ? Math.max(...this.revs.keys()) : null; this.cur = null; }
     return drop.length;
   }

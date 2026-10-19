@@ -43,7 +43,7 @@ export function dataPanel({ ctx, ready, io }) {
           toast(`Restored #${r.seq}`, 'ok', 1800); ctx.store.emit('db');
         };
         const pin = r => db.pin(r.seq, !r.pinned);
-        const del = r => { if (confirm(`Delete revision #${r.seq}?`)) return db.remove(r.seq); };
+        const del = r => { if (confirm(`Delete revision #${r.seq}?`)) return db.remove(r.seq, ctx.store.project); };
         const compact = async () => {
           const c = await db.compact();
           compactNote = `Compacted: ${fmtBytes(c.before)} -> ${fmtBytes(c.after)}`;

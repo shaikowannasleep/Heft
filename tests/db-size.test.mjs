@@ -9,7 +9,7 @@ import { bigLevel } from './db-fixtures.mjs';
 
 const BUDGET = {
   default205: 2560,          // 2.5 KB for the 205-resource default level [2217 B]
-  synthetic10k: 80 * 1024,   // 10k resources at 0.01 m / 0.001 rad precision [76513 B; per-field entropy floor ~59.5 KB]
+  synthetic10k: 70 * 1024,   // 10k resources at 0.01 m / 0.001 rad precision [66620 B after offset packing; entropy floor ~59.5 KB]
   growth1000: 8 * 1024,      // DB size after 1000 autosaves on the default level [3.65 KB]
 };
 

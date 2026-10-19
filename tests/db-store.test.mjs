@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as D from '../src/core/heft-data.js';
 import { ProjectDB, QuotaError, LIMITS, keepSet } from '../src/db/store.js';
+import { HeftbError } from '../src/db/codec.js';
 import { memoryAdapter } from '../src/db/adapters.js';
 import { diff, apply, summarize } from '../src/db/diff.js';
 import { bigLevel } from './db-fixtures.mjs';
@@ -141,4 +142,101 @@ test('saving an unchanged project writes nothing', async () => {
   const again = await db.save(p);
   assert.equal(again.skipped, true);
   assert.equal((await db.list()).length, 1);
+});
+
+test('diff and apply: __proto__ keys stay own data, NaN is unchanged, -0 is a change', () => {
+  const a = { level: { x: 1, n: NaN, z: 0 } };
+  const b = JSON.parse('{"level":{"x":1,"n":0,"z":0}}');
+  Object.defineProperty(b.level, '__proto__', { value: { polluted: 1 }, enumerable: true, writable: true, configurable: true });
+  const ops = diff(a, b);
+  const out = apply(a, ops);
+  assert.equal(Object.getPrototypeOf(out.level), Object.prototype);
+  assert.equal(Object.hasOwn(out.level, '__proto__'), true);
+  assert.equal({}.polluted, undefined);
+  assert.deepStrictEqual(diff({ v: NaN }, { v: NaN }), []);
+  assert.equal(diff({ v: 0 }, { v: -0 }).length, 1);
+});
+
+// A storage that is nearly full: ballast in the projects store (ProjectDB never reads it) leaves `free` bytes.
+async function fillTo(mem, free) {
+  const { usage, quota } = await mem.estimate();
+  await mem.write([{ store: 'projects', value: { id: 'ballast', data: new Uint8Array(Math.max(0, quota - usage - free)) } }]);
+}
+
+test('near a full quota: pin, delete and Compact still succeed; a growing save is refused and the project is unchanged', async () => {
+  let t = Date.parse('2026-10-19T09:00:00Z');
+  const mem = memoryAdapter({ quota: 1 << 20 }), db = new ProjectDB(mem, { now: () => t });
+  const rng = D.mulberry32(17);
+  let p = bigLevel(2000, 7);
+  for (let i = 0; i < 6; i++) { p = editor(p, rng); t += 2000; await db.save(p); }
+  const before = await db.list();
+  await fillTo(mem, 30 << 10);   // 30 KB free, below the 64 KB margin
+  await assert.rejects(db.save(editor(p, rng)), e => e instanceof QuotaError && /Your project is unchanged/.test(e.message));
+  assert.deepStrictEqual(await db.latest(), p);
+  const old = before[before.length - 1].seq;
+  await db.pin(old, true);
+  assert.equal((await db.list()).find(r => r.seq === old).pinned, true);
+  await db.remove(before[1].seq);
+  assert.equal((await db.list()).length, before.length - 1);
+  await db.compact();
+  assert.deepStrictEqual(await db.latest(), p);
+});
+
+test('deleting the newest revision saves the open project first, so nothing is lost', async () => {
+  let t = Date.parse('2026-10-19T09:00:00Z');
+  const db = new ProjectDB(memoryAdapter(), { now: () => t });
+  const rng = D.mulberry32(23);
+  let p = bigLevel(40, 8);
+  await db.save(p);
+  p = editor(p, rng); t += 2000;
+  await db.save(p);
+  const head = (await db.list()).find(r => r.head).seq;
+  await assert.rejects(db.remove(head), /open project/);
+  await db.remove(head, p);
+  assert.deepStrictEqual(await db.latest(), p);
+  assert.equal((await db.list()).some(r => r.seq === head), false);
+});
+
+test('a failing GC delete leaves every kept revision replayable', async () => {
+  let t = Date.parse('2026-10-19T09:00:00Z');
+  const base = memoryAdapter(), fail = { at: 0, n: 0 };
+  const flaky = { ...base, write: async ops => { if (ops.some(o => 'del' in o) && ++fail.n === fail.at) throw new Error('disk went away'); return base.write(ops); } };
+  const db = new ProjectDB(flaky, { now: () => t, onWarn: () => {} });
+  const rng = D.mulberry32(29), snap = new Map();
+  let p = bigLevel(60, 9);
+  snap.set((await db.save(p)).seq, p);
+  for (let i = 0; i < 30; i++) {
+    p = editor(p, rng); t += 2000;
+    fail.at = fail.n + 1 + (i % 3);   // fail the next, second or third delete write
+    snap.set((await db.save(p)).seq, p);
+  }
+  for (const r of await db.list()) assert.deepStrictEqual(await db.restore(r.seq), snap.get(r.seq), `seq ${r.seq}`);
+  assert.deepStrictEqual(await db.latest(), p);
+});
+
+test('an unchanged project with NaN is skipped on re-save, and an unpaired surrogate is refused without writing', async () => {
+  const db = new ProjectDB(memoryAdapter());
+  const p = bigLevel(20, 10);
+  p.level.resources[0].x = NaN;
+  await db.save(p);
+  assert.equal((await db.save(p)).skipped, true);
+  assert.equal((await db.list()).length, 1);
+  const before = await db.list();
+  await assert.rejects(db.save({ ...p, name: 'bad \uD800' }), e => e instanceof HeftbError);
+  assert.deepStrictEqual(await db.list(), before);
+});
+
+test('with almost no space left, removing a base that a kept delta reads, and Compact, still succeed', async () => {
+  let t = Date.parse('2026-10-19T09:00:00Z');
+  const mem = memoryAdapter({ quota: 1 << 20 }), db = new ProjectDB(mem, { now: () => t });
+  const rng = D.mulberry32(31), snap = new Map();
+  let p = bigLevel(300, 12);
+  snap.set((await db.save(p)).seq, p);
+  for (let i = 0; i < 4; i++) { p = editor(p, rng); t += 2000; snap.set((await db.save(p)).seq, p); }
+  const first = (await db.list()).at(-1).seq;
+  await fillTo(mem, 12);
+  await db.remove(first);
+  for (const r of await db.list()) assert.deepStrictEqual(await db.restore(r.seq), snap.get(r.seq), `seq ${r.seq}`);
+  await db.compact();
+  assert.deepStrictEqual(await db.latest(), p);
 });
