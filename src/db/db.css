@@ -1,0 +1,42 @@
+/* Data panel (pillar 4). Colors are the shell tokens; the one data hue is --accent. */
+.db-panel { padding: 10px 12px; font: 12px/1.4 var(--font); color: var(--fg); overflow: auto; height: 100%; box-sizing: border-box; }
+.db-panel h4 { margin: 14px 0 6px; font-size: 11px; font-weight: 600; color: var(--fg2); text-transform: uppercase; letter-spacing: .04em; }
+.db-bar { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.db-btn { background: var(--bg3); color: var(--fg); border: 1px solid var(--line2); border-radius: 3px; padding: 3px 8px; font: inherit; cursor: pointer; }
+.db-btn:hover { background: var(--bg4); }
+.db-btn.primary { border-color: var(--accent2); }
+.db-btn.danger:hover { color: var(--err); }
+.db-note, .db-sum { color: var(--fg2); margin-top: 6px; }
+.db-row { display: grid; grid-template-columns: minmax(0, 110px) minmax(0, 1fr) minmax(0, 230px); gap: 8px; align-items: center; margin: 4px 0; }
+.db-lbl { color: var(--fg2); }
+.db-track { height: 8px; background: var(--bg3); border-radius: 4px; overflow: hidden; }
+.db-fill { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+.db-fill.warn { background: var(--warn); }
+.db-val { color: var(--fg); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.db-warn { color: var(--warn); margin: 6px 0; }
+.db-quota { margin-top: 8px; }
+.db-chart { position: relative; }
+.db-svg { width: 100%; max-width: 760px; height: auto; display: block; }
+.db-grid { stroke: var(--line2); stroke-width: 1; }
+.db-tick, .db-end { fill: var(--fg2); font-size: 10px; }
+.db-end { fill: var(--fg); }
+.db-bar { fill: var(--accent); }
+.db-bar.base { fill: var(--accent2); }
+.db-line { stroke: var(--fg); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.db-dot { fill: var(--fg); stroke: var(--bg1); stroke-width: 2; }
+.db-hit { fill: transparent; }
+.db-tip { position: absolute; top: 0; transform: translateX(-50%); background: var(--bg4); color: var(--fg); padding: 2px 6px; border-radius: 3px; pointer-events: none; opacity: 0; white-space: nowrap; font-size: 11px; }
+.db-tip.on { opacity: 1; }
+.db-legend { display: flex; gap: 14px; color: var(--fg2); margin-top: 4px; }
+.db-legend .sw { display: inline-flex; align-items: center; gap: 5px; }
+.db-legend .sw::before { content: ''; display: inline-block; width: 10px; height: 8px; border-radius: 2px; background: var(--accent); }
+.db-legend .sw.line::before { height: 2px; background: var(--fg); }
+.db-table { width: 100%; border-collapse: collapse; }
+.db-table th, .db-table td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line); vertical-align: middle; overflow-wrap: anywhere; }
+.db-table th { color: var(--fg2); font-weight: 500; }
+.db-table .num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.db-table .chg { color: var(--fg2); }
+.db-table tr.head td:first-child { color: var(--ok); }
+.db-table .acts { min-width: 0; }
+.db-table .acts .db-btn { padding: 1px 6px; margin: 1px 2px 1px 0; }
+.db-empty { color: var(--fg3); }

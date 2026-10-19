@@ -87,11 +87,12 @@ export function nextId(list) { return list.reduce((m, o) => Math.max(m, o.id), 0
 // Level exactly as the game expects it (save-file shape), for playtest and export.
 export function toGameState(project) {
   const { level } = project;
-  return { ...level, savedAt: new Date().toISOString(), structures: level.structures.map(({ type, x, z, rot }) => ({ type, x, z, rot })) };
+  return { ...level, models: project.models ?? {}, savedAt: new Date().toISOString(), structures: level.structures.map(({ type, x, z, rot }) => ({ type, x, z, rot })) };
 }
 export function fromGameState(state, name = 'Imported') {
   if (!validState(state)) throw new Error('not a Heft level/save');
-  return { format: 'heft-studio', version: 1, name, models: {}, meta: { created: new Date().toISOString() },
-    level: { ...state, structures: state.structures.map((s, i) => ({ id: i + 1, type: s.type, x: s.x, z: s.z, rot: s.rot || 0 })) } };
+  const { models, ...level } = state;
+  return { format: 'heft-studio', version: 1, name, models: models ?? {}, meta: { created: new Date().toISOString() },
+    level: { ...level, structures: state.structures.map((s, i) => ({ id: i + 1, type: s.type, x: s.x, z: s.z, rot: s.rot || 0 })) } };
 }
 export const RES_V = { tree: ['Pine', 'Oak', 'Autumn'], rock: ['Boulder', 'Slab'] };

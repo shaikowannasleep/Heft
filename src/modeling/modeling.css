@@ -1,0 +1,32 @@
+/* Model Editor panel. Colours come from the shell variables in src/shell/style.css. */
+.mdl { display: flex; flex-direction: column; height: 100%; background: var(--bg2); color: var(--fg); outline: none; }
+.mdl-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 4px 8px; background: var(--bg1); border-bottom: 1px solid var(--line); }
+.mdl-bar .grp { display: flex; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; }
+.mdl-bar .grp .tb { border: 0; border-right: 1px solid var(--line); }
+.mdl-bar .grp .tb:last-child { border-right: 0; }
+.mdl-body { display: flex; flex: 1; min-height: 0; }
+.mdl-side { width: 210px; flex: none; overflow: auto; background: var(--bg1); border-right: 1px solid var(--line); padding: 6px; }
+.mdl-side select { width: 100%; margin-bottom: 6px; }
+.mdl-vp { position: relative; flex: 1; min-width: 0; overflow: hidden; }
+.mdl-vp canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.mdl-box { position: absolute; display: none; border: 1px dashed var(--accent); background: rgba(61, 139, 253, .15); pointer-events: none; }
+.mdl-btns { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 8px; }
+.mdl-row { display: flex; align-items: center; gap: 6px; padding: 3px 6px; border-radius: 3px; cursor: default; }
+.mdl-row:hover { background: var(--bg3); }
+.mdl-row.on { background: var(--accent2); color: #fff; }
+.mdl-row .dim { margin-left: auto; color: var(--fg3); }
+.mdl-row.on .dim { color: #cfe0f5; }
+.mdl-row .sw { width: 10px; height: 10px; border: 1px solid var(--line); border-radius: 2px; }
+.mdl-insp { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+.mdl-insp h4 { margin: 2px 0 8px; font-size: 12px; color: var(--fg2); font-weight: 600; }
+.mdl-insp .f { display: grid; grid-template-columns: 78px 1fr; align-items: center; gap: 6px; margin-bottom: 4px; }
+.mdl-insp .f input, .mdl-insp .f select { width: 100%; }
+.mdl-insp .vec { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-bottom: 6px; }
+.mdl-insp .vec .vl { grid-column: 1 / -1; color: var(--fg2); }
+.mdl-insp .vec input { min-width: 0; width: 100%; }
+.mdl-insp .vec input.x { border-left: 2px solid var(--x); }
+.mdl-insp .vec input.y { border-left: 2px solid var(--y); }
+.mdl-insp .vec input.z { border-left: 2px solid var(--z); }
+.mdl-insp p { margin: 6px 0; line-height: 1.45; }
+.dim { color: var(--fg3); }
+.mdl-foot { height: 22px; line-height: 22px; padding: 0 8px; font: 11px var(--mono); color: var(--fg3); background: var(--bg1); border-top: 1px solid var(--line); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

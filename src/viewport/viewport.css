@@ -1,0 +1,12 @@
+/* Scene 2D / Scene 3D panels. Colours come from the shell's CSS variables. */
+.vp { display: flex; flex-direction: column; width: 100%; height: 100%; min-height: 0; background: var(--bg0); color: var(--fg); }
+.vp-bar { display: flex; align-items: center; gap: 4px; flex: none; height: 30px; padding: 0 8px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.vp-bar .sp { flex: 1; }
+.vp-title { color: var(--fg2); font-weight: 600; }
+.vp-grp { display: flex; gap: 2px; }
+.vp-view { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.vp-canvas { position: absolute; left: 0; top: 0; display: block; touch-action: none; }
+.vp-axis { position: absolute; right: 8px; top: 8px; width: 92px; height: 92px; cursor: pointer; }
+.vp-read { position: absolute; left: 8px; bottom: 6px; padding: 2px 6px; border-radius: 3px; background: rgba(0, 0, 0, .35); color: var(--fg2); font: 11px ui-monospace, Menlo, monospace; pointer-events: none; }
+.vp-marq { position: absolute; border: 1px dashed var(--accent); background: rgba(61, 139, 253, .12); pointer-events: none; }
+.vp-pop { position: fixed; z-index: 1000; min-width: 170px; }

@@ -1,0 +1,36 @@
+/* Bench and Solvability panels. Colours come from the shell's style.css variables. */
+.bn, .sv { font: 12px/1.4 var(--font); color: var(--fg); padding: 8px 10px; display: flex; flex-direction: column; gap: 8px; min-height: 0; overflow-y: auto; }
+.bn-top, .sv-top { display: flex; align-items: center; gap: 10px; }
+.bn-status { color: var(--fg2); font-family: var(--mono); }
+.bn-btn { margin-left: auto; background: var(--bg3); color: var(--fg); border: 1px solid var(--line2); border-radius: 4px; padding: 3px 8px; cursor: pointer; }
+.bn-btn:hover { border-color: var(--accent); }
+.bn-bar { height: 3px; background: var(--bg3); border-radius: 2px; overflow: hidden; }
+.bn-bar i { display: block; height: 100%; width: 0; background: var(--accent2); }
+.bn-bar i.on { transition: width .15s linear; }
+table.bn-tab, table.sv-tab { border-collapse: collapse; width: 100%; font-family: var(--mono); font-size: 10px; flex: none; }
+.bn-tab th, .bn-tab td, .sv-tab td { padding: 3px 3px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.bn-tab th { color: var(--fg3); font-weight: 600; }
+.bn-tab td.bad { color: var(--warn); }
+.sv-tab td.mono { word-break: break-word; }
+.bn-foot { color: var(--fg3); font-size: 11px; }
+.bn-ov, .sv-ov { display: flex; gap: 12px; color: var(--fg2); flex-wrap: wrap; }
+.bn-ov label, .sv-ov label { cursor: pointer; }
+.sv-badge { font-weight: 700; letter-spacing: .04em; padding: 3px 8px; border-radius: 4px; border: 1px solid var(--line2); }
+.sv-badge.solvable { color: var(--ok); border-color: var(--ok); }
+.sv-badge.at-risk { color: var(--warn); border-color: var(--warn); }
+.sv-badge.unsolvable { color: var(--err); border-color: var(--err); }
+.sv-ok { font-family: var(--mono); width: 2.5em; }
+.sv-ok.good { color: var(--ok); }
+.sv-ok.bad { color: var(--err); }
+.sv-meter { display: grid; grid-template-columns: 110px 1fr; align-items: center; gap: 6px; font-family: var(--mono); }
+.sv-bar { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+.sv-bar i { display: block; height: 100%; }
+.sv-bar i.good { background: var(--ok); }
+.sv-bar i.bad { background: var(--err); }
+.sv-issues { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; flex: none; }
+.sv-issues li { cursor: pointer; padding: 2px 4px; border-radius: 3px; }
+.sv-issues li:hover { background: var(--bg3); }
+.sv-issues b { font-family: var(--mono); font-size: 10px; text-transform: uppercase; }
+.sv-block b, .sv-issues .sv-block b { color: var(--err); }
+.sv-warn b { color: var(--warn); }
+.sv-hint b { color: var(--accent); }
