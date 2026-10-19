@@ -1826,7 +1826,9 @@ function newState(seed = (Math.random() * 1e9) | 0) {
 }
 let saveTimer = 0, saveSoon = false;
 function requestSave(now = false) { if (now) saveLocal(); else saveSoon = true; }
+let playtest = false;  // a Studio playtest must never overwrite the player's real autosave
 function saveLocal() {
+  if (playtest) return false;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(serialize())); saveSoon = false; saveTimer = 0; return true; }
   catch (err) { console.warn('Heft: autosave failed', err); return false; }
 }
@@ -1973,6 +1975,16 @@ renderer.setAnimationLoop(frame);
 // small hook for automated checks / tinkering in the console
 window.heft = { serialize, applyState, newState, player, world, get stack() { return stack; }, get resources() { return resources; },
   harvest: r => harvest(r), addStock: (w, s) => { stock.wood += w; stock.stone += s; refreshPiles(); }, setTime: t => { world.dayTime = t; } };
+
+// Heft Studio playtest: the editor embeds this page and posts a level (same shape as a save file).
+addEventListener('message', e => {
+  if (e.data?.type !== 'heft:playtest' || !validState(e.data.state)) return;
+  playtest = true;
+  applyState(e.data.state);
+  if (introOpen) startGame('loaded'); else closeMenu();
+  e.source?.postMessage({ type: 'heft:ready', day: world.day }, '*');
+});
+if (parent !== window) parent.postMessage({ type: 'heft:boot' }, '*');
 </script>
 </body>
 </html>
