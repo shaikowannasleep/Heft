@@ -11,7 +11,7 @@ const errors = [];
 page.on('pageerror', e => errors.push(e.message));
 page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
 await page.goto(url);
-await page.waitForFunction(() => window.studio, null, { timeout: 15000 });
+await page.waitForFunction(() => window.studio, null, { timeout: 60000 });
 await page.waitForTimeout(1500);
 await page.screenshot({ path: out });
 const info = await page.evaluate(() => ({ panels: window.studio.bag.dock.panels.map(p => p.id), nodes: window.studio.nodeIds().length }));

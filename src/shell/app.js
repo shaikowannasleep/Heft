@@ -7,7 +7,7 @@ import { h, toast } from '../core/dom.js';
 import { Store, getNode, draftNode, nodeIds } from '../core/store.js';
 import * as data from '../core/heft-data.js';
 
-const LAYOUT_KEY = 'heft-studio.layout.v1';
+const LAYOUT_KEY = 'heft-studio.layout.v2';
 
 export function createStudio(root) {
   const store = new Store(data.newProject(1));
@@ -194,17 +194,18 @@ export function createStudio(root) {
   const has = id => panels.some(p => p.id === id);
   function add(id, position, extra) { if (has(id) && !dock.getPanel(id)) dock.addPanel({ id, component: id, title: panels.find(p => p.id === id).title, position, ...extra }); }
   function togglePanel(id) { const p = dock.getPanel(id); if (p) p.api.close(); else add(id); }
-  // Unity-ish: Hierarchy left, Scene 2D | Scene 3D centre, Inspector right, bench/data/console bottom.
+  // Unity-ish: Hierarchy and Inspector full height, Scene 2D | Scene 3D on top, bench/data tabs spanning both scenes below.
   function defaultLayout() {
     dock.clear();
     const center = ['scene2d', 'scene3d', 'modeling', 'playtest'].filter(has);
-    add(center[0]);
-    if (center.includes('scene3d') && center[0] !== 'scene3d') add('scene3d', { referencePanel: center[0], direction: 'right' });
-    for (const id of center.slice(1)) if (id !== 'scene3d') add(id, { referencePanel: center.includes('scene3d') ? 'scene3d' : center[0], direction: 'within' }, { inactive: true });
-    add('hierarchy', { referencePanel: center[0], direction: 'left' });
-    add('inspector', { referencePanel: center.includes('scene3d') ? 'scene3d' : center[0], direction: 'right' });
+    const main = center.includes('scene3d') ? 'scene3d' : center[0];
     const bottom = panels.filter(p => p.area === 'bottom').map(p => p.id);
+    add(center[0]);
     bottom.forEach((id, i) => add(id, i ? { referencePanel: bottom[0], direction: 'within' } : { referencePanel: center[0], direction: 'below' }, i ? { inactive: true } : undefined));
+    if (main !== center[0]) add(main, { referencePanel: center[0], direction: 'right' });
+    for (const id of center) if (id !== center[0] && id !== main) add(id, { referencePanel: main, direction: 'within' }, { inactive: true });
+    add('hierarchy', { direction: 'left' });
+    add('inspector', { direction: 'right' });
     for (const p of panels) if (!dock.getPanel(p.id) && p.area !== 'hidden') add(p.id, { referencePanel: 'inspector', direction: 'within' }, { inactive: true });
     try {
       const L = dock.getPanel('hierarchy')?.group; L?.api.setSize({ width: 250 });
