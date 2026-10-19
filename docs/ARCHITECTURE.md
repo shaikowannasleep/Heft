@@ -41,6 +41,7 @@ Each pillar exports `install(ctx)` from `src/<pillar>/index.js`. A pillar edits 
 - `bag.frame(ids)`, `bag.viewCenter() => {x,z}`: provided by the viewport.
 - `bag.overlays`: array of `{ id, label, enabled, rev, draw2d?(g, view), object3d?(THREE) }`. The viewport draws every
   enabled overlay in 2D (`view.toScreen(x,z) => [sx,sy]`, `view.scale` px per metre) and adds `object3d()` to the 3D
+- `bag.redraw()`: provided by the viewport. Call it after changing an overlay's `enabled`, `rev` or data so both views repaint.
   scene, rebuilding when `rev` changes. Pillars push overlays here (bench heatmaps, reachability, claim radii).
 - `bag.models`: provided by modeling: `{ keys(), geometry(key) => THREE.BufferGeometry (vertex colours, y-up, metres), rev(key) }`.
   Keys: `tree.0..2`, `rock.0..1`, `campfire`, `wall`, `workbench`, `player`. The viewport falls back to primitives when absent.

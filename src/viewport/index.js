@@ -30,6 +30,7 @@ export function install(ctx) {
   // One loop for both views, so a store change lands in the same frame in 2D and 3D.
   const loop = now => { for (const v of sh.views) v.tick(now); requestAnimationFrame(loop); };
   requestAnimationFrame(loop);
+  ctx.bag.redraw = () => sh.redraw();   // pillars call this after changing an overlay (enabled / rev / data)
 
   ctx.registerPanel({ id: 'scene2d', title: 'Scene 2D', area: 'center', noScroll: true, create: () => scene2d(sh) });
   ctx.registerPanel({ id: 'scene3d', title: 'Scene 3D', area: 'center', noScroll: true, create: () => scene3d(sh) });
