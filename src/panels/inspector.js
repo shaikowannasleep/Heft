@@ -50,12 +50,12 @@ export function inspectorPanel(ctx) {
   // set a field on every selected node (single undo step; drags merge)
   const setAll = (ids, field, conv = v => v) => (v, merge) => store.update(`Set ${field}`, d => {
     for (const id of ids) { const o = ctx.draftNode(d, id); if (o && field in o) o[field] = conv(v); }
-  }, merge || field + ids.join());
+  }, merge);
   const first = ids => ctx.getNode(ids[0])?.obj;
 
   function renderLevel() {
     const L = store.project.level;
-    const setL = (path, label) => (v, merge) => store.update(label, d => { const p = path.split('.'); let o = d.level; while (p.length > 1) o = o[p.shift()]; o[p[0]] = v; }, merge || path);
+    const setL = (path, label) => (v, merge) => store.update(label, d => { const p = path.split('.'); let o = d.level; while (p.length > 1) o = o[p.shift()]; o[p[0]] = v; }, merge);
     el.replaceChildren(
       h('div', { class: 'head' }, h('span', { class: 'ic' }, '🏝'), h('div', {}, h('div', { class: 'ttl' }, store.project.name), h('div', { class: 'sub' }, 'Level settings'))),
       comp('Island', '🌊 ',

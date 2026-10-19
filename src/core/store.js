@@ -33,16 +33,17 @@ export class Store {
       if (--this._batch === 0) { const q = this._queued; this._queued = null; if (q) for (const w of q) this.emit(w); }
     }
   }
-  // merge: edits with the same merge key within 1.5 s collapse into one undo step (drags, scrubs).
+  // merge: consecutive edits with the same merge key collapse into one undo step. Callers pass a key unique per gesture
+  // (drag, scrub), so a pause mid-drag never splits it and two separate gestures never join.
   update(label, recipe, merge) {
     const [next, patches, inverse] = produceWithPatches(this.project, recipe);
     if (!patches.length) return;
     this.project = next;
     const last = this.past[this.past.length - 1];
-    if (merge && last && last.merge === merge && Date.now() - last.at < 1500) {
-      last.patches.push(...patches); last.inverse.unshift(...inverse); last.at = Date.now(); compactReplaces(last);
+    if (merge && last && last.merge === merge) {
+      last.patches.push(...patches); last.inverse.unshift(...inverse); compactReplaces(last);
     } else {
-      this.past.push({ label, patches, inverse, merge, at: Date.now() });
+      this.past.push({ label, patches, inverse, merge });
       if (this.past.length > 300) this.past.shift();
     }
     this.future = []; this.dirty = true; this.rev++;
