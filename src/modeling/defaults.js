@@ -6,7 +6,8 @@ import { KEYS } from './recipe.js';
 
 export const part = (prim, args, color, o = {}) => ({ prim, args, color, pos: [o.x || 0, o.y || 0, o.z || 0], rot: [o.rx || 0, o.ry || 0, o.rz || 0],
   scale: [o.sx ?? o.s ?? 1, o.sy ?? o.s ?? 1, o.sz ?? o.s ?? 1], jit: o.jit ?? 0.07, grad: o.grad ?? 0.22, warp: o.warp || 0, seed: o.seed ?? 7 });
-const at = (parts, ox, oy, oz) => parts.map(p => ({ ...p, pos: [p.pos[0] + ox, p.pos[1] + oy, p.pos[2] + oz] }));
+// g: the player's rig group (see PIVOT in repo-app); the pivot is subtracted in the game, the recipe stays in the root frame.
+const at = (parts, ox, oy, oz, g) => parts.map(p => ({ ...p, pos: [p.pos[0] + ox, p.pos[1] + oy, p.pos[2] + oz], ...(g && { g }) }));
 
 function tree(v, seed) {
   const r = mulberry32(seed), out = [];
@@ -66,7 +67,7 @@ const player = () => {
     iron: 0x8e959c, edge: 0xd4d9de, frame: 0x7a5232, rope: 0xcfb07a };
   const legs = s => at([part('box', [0.23, 0.5, 0.25], C.trousers, { y: -0.25 }), part('box', [0.2, 0.3, 0.22], C.trousers, { y: -0.6 }),
     part('box', [0.27, 0.07, 0.27], C.boots, { y: -0.67 }), part('box', [0.26, 0.22, 0.36], C.boots, { y: -0.81, z: 0.05 }),
-    part('box', [0.27, 0.05, 0.38], C.sole, { y: -0.9, z: 0.05 })], 0.15 * s, 0.92, 0);
+    part('box', [0.27, 0.05, 0.38], C.sole, { y: -0.9, z: 0.05 })], 0.15 * s, 0.92, 0, s > 0 ? 'legL' : 'legR');
   const torso = at([part('box', [0.6, 0.24, 0.38], C.tunicDark, { y: 0.04 }), part('box', [0.6, 0.52, 0.36], C.tunic, { y: 0.42 }),
     part('box', [0.72, 0.14, 0.38], C.tunic, { y: 0.63 }), part('box', [0.15, 0.1, 0.03], C.skin, { y: 0.62, z: 0.18 }),
     part('box', [0.65, 0.11, 0.41], C.belt, { y: 0.15 }), part('box', [0.11, 0.09, 0.03], C.buckle, { y: 0.15, z: 0.21 }),
@@ -78,16 +79,16 @@ const player = () => {
     part('box', [0.8, 0.06, 0.58], C.frame, { y: 0.1, z: -0.47 }), part('box', [0.05, 0.12, 0.58], C.frame, { x: 0.38, y: 0.15, z: -0.47 }),
     part('box', [0.05, 0.12, 0.58], C.frame, { x: -0.38, y: 0.15, z: -0.47 }),
     part('box', [0.08, 0.04, 0.42], C.rope, { x: 0.17, y: 0.71, z: -0.02 }), part('box', [0.08, 0.04, 0.42], C.rope, { x: -0.17, y: 0.71, z: -0.02 }),
-    part('box', [0.07, 0.48, 0.03], C.rope, { x: 0.17, y: 0.46, z: 0.185 }), part('box', [0.07, 0.48, 0.03], C.rope, { x: -0.17, y: 0.46, z: 0.185 })], 0, 0.92, 0);
+    part('box', [0.07, 0.48, 0.03], C.rope, { x: 0.17, y: 0.46, z: 0.185 }), part('box', [0.07, 0.48, 0.03], C.rope, { x: -0.17, y: 0.46, z: 0.185 })], 0, 0.92, 0, 'torso');
   const head = at([part('box', [0.34, 0.36, 0.34], C.skin, { y: 0.17 }), part('box', [0.36, 0.12, 0.36], C.hair, { y: 0.38 }),
     part('box', [0.37, 0.08, 0.37], C.band, { y: 0.31 }), part('box', [0.08, 0.16, 0.04], C.band, { x: -0.1, y: 0.24, z: -0.2, rz: 0.3 }),
     part('box', [0.36, 0.2, 0.08], C.hair, { y: 0.22, z: -0.15 }), part('box', [0.3, 0.15, 0.08], C.hair, { y: 0.03, z: 0.15 }),
     part('box', [0.2, 0.08, 0.06], C.hair, { y: -0.04, z: 0.14 }), part('box', [0.07, 0.09, 0.07], C.skin, { y: 0.15, z: 0.19 }),
     part('box', [0.05, 0.05, 0.02], C.eye, { x: 0.08, y: 0.21, z: 0.172 }), part('box', [0.05, 0.05, 0.02], C.eye, { x: -0.08, y: 0.21, z: 0.172 }),
     part('box', [0.09, 0.025, 0.02], C.hair, { x: 0.08, y: 0.26, z: 0.172 }), part('box', [0.09, 0.025, 0.02], C.hair, { x: -0.08, y: 0.26, z: 0.172 }),
-    part('box', [0.05, 0.08, 0.06], C.skin, { x: 0.19, y: 0.17 }), part('box', [0.05, 0.08, 0.06], C.skin, { x: -0.19, y: 0.17 })], 0, 1.72, 0);
+    part('box', [0.05, 0.08, 0.06], C.skin, { x: 0.19, y: 0.17 }), part('box', [0.05, 0.08, 0.06], C.skin, { x: -0.19, y: 0.17 })], 0, 1.72, 0, 'head');
   const arm = s => at([part('box', [0.18, 0.32, 0.19], C.tunic, { y: -0.12 }), part('box', [0.15, 0.28, 0.16], C.skin, { y: -0.4 }),
-    part('box', [0.17, 0.1, 0.18], C.belt, { y: -0.46 }), part('box', [0.15, 0.14, 0.16], C.skin, { y: -0.6 })], 0.39 * s, 1.54, 0);
+    part('box', [0.17, 0.1, 0.18], C.belt, { y: -0.46 }), part('box', [0.15, 0.14, 0.16], C.skin, { y: -0.6 })], 0.39 * s, 1.54, 0, s > 0 ? 'armL' : 'armR');
   return [...legs(1), ...legs(-1), ...torso, ...head, ...arm(1), ...arm(-1)];
 };
 

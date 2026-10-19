@@ -21,7 +21,7 @@ await page.waitForTimeout(700);
 await page.screenshot({ path: `${OUT}/part-mode.png` });
 
 // Vertex mode: focus the panel, select every weld, and drag the gizmo from the viewport centre.
-await page.locator('.mdl-bar button', { hasText: 'Vertex' }).click();
+await page.locator('.mdl-bar button[title^="Vertex mode"]').click();
 const vp = await page.locator('.mdl-vp').boundingBox();
 await page.locator('.mdl-vp').click({ position: { x: 20, y: 20 } });
 await page.keyboard.press('Control+a');
@@ -38,7 +38,7 @@ await page.waitForTimeout(300);
 result.vertexDrag = await page.evaluate(b => ({ steps: window.studio.store.past.length - b, label: window.studio.store.past.at(-1)?.label, edited: window.studio.bag.models.edited('tree.0') }), before);
 await page.keyboard.press('Control+z');
 result.undoRestored = await page.evaluate(() => !window.studio.bag.models.edited('tree.0'));
-await page.locator('.mdl-bar button', { hasText: 'Part' }).click();
+await page.locator('.mdl-bar button[title^="Part mode"]').click();
 await page.screenshot({ path: `${OUT}/part-mode-after.png` });
 
 // Game: tint the oak through the models bag, then hand the level and models to the game with the same postMessage the playtest uses.
@@ -56,8 +56,8 @@ result.gameTree = await page.evaluate(() => new Promise(res => {
 await page.waitForTimeout(2500);
 await page.screenshot({ path: `${OUT}/game-edited-tree.png` });
 
-// Standalone preview.html built from the live bag, opened from disk (the three.js import map comes from the CDN).
-const previewHtml = await page.evaluate(async () => { const m = await import('/src/modeling/preview.js'); return m.previewHtml(JSON.stringify(m.modelsEnvelope(window.studio.bag.models))); });
+// Standalone preview.html built from the live bag, opened from disk (three.js is inlined, so no network is needed).
+const previewHtml = await page.evaluate(async () => { const m = await import('/src/modeling/preview.js'); const v = await import('/src/modeling/viewer.generated.js'); return m.previewHtml(JSON.stringify(m.modelsEnvelope(window.studio.bag.models)), v.LIB); });
 fs.writeFileSync(`${OUT}/preview.html`, previewHtml);
 const pv = await browser.newPage({ viewport: { width: 1200, height: 800 } });
 const previewErrors = [];

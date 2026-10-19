@@ -88,6 +88,9 @@ export function createStudio(root) {
     { id: 'file.open', label: 'Open level / save (.json)…', keys: 'Mod+O', menu: 'File', run: () => openJson() },
     { id: 'file.export', label: 'Export level for game (world_save.json)', keys: 'Mod+E', menu: 'File', run: () => download(JSON.stringify(data.toGameState(store.project), null, 1), 'world_save.json') },
     { id: 'file.layout', label: 'Reset layout', menu: 'Window', run: () => defaultLayout() },
+    { id: 'window.maximize', label: 'Maximize / restore active panel', keys: 'Shift+Space', menu: 'Window', run: () => {
+      if (dock.hasMaximizedGroup()) dock.exitMaximizedGroup(); else if (dock.activePanel) dock.maximizeGroup(dock.activePanel);
+    } },
     ...['tree', 'rock', 'campfire', 'wall', 'workbench'].map(k => ({ id: 'add.' + k, label: data.STRUCT[k]?.name ?? k[0].toUpperCase() + k.slice(1), menu: 'GameObject', run: () => addAt(k) })),
   ].forEach(c => commands.push(c));
 
@@ -110,7 +113,7 @@ export function createStudio(root) {
 
   // ---------------------------------------------------------------- hotkeys (Unity defaults; Mod = Ctrl or Cmd)
   const comboOf = e => [(e.ctrlKey || e.metaKey) && 'Mod', e.altKey && 'Alt', e.shiftKey && 'Shift',
-    e.key.length === 1 ? e.key.toUpperCase() : e.key].filter(Boolean).join('+');
+    e.key === ' ' ? 'Space' : e.key.length === 1 ? e.key.toUpperCase() : e.key].filter(Boolean).join('+');
   addEventListener('keydown', e => {
     const t = e.target, typing = t.closest?.('input,textarea,select,[contenteditable]');
     const combo = comboOf(e);

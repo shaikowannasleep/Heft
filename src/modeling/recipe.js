@@ -4,6 +4,7 @@
 import * as THREE from 'three';
 import { mulberry32 } from '../core/heft-data.js';
 
+export const GROUPS = ['root', 'legL', 'legR', 'torso', 'head', 'armL', 'armR'];   // player rig groups a part may belong to
 export const KEYS = ['tree.0', 'tree.1', 'tree.2', 'rock.0', 'rock.1', 'campfire', 'wall', 'workbench', 'player'];
 export const NAMES = { 'tree.0': 'Pine', 'tree.1': 'Oak', 'tree.2': 'Autumn tree', 'rock.0': 'Boulder', 'rock.1': 'Mossy rock',
   campfire: 'Campfire', wall: 'Palisade', workbench: 'Workbench', player: 'Builder (rest pose)' };
@@ -93,7 +94,7 @@ export function validParts(parts) {
     if (si !== undefined && !(Number.isInteger(p.args[si]) && p.args[si] >= 3 && p.args[si] <= 64)) return false;
     if (p.prim === 'ico' && !(Number.isInteger(p.args[1]) && p.args[1] >= 0 && p.args[1] <= 3)) return false;
     return finite(p.pos, 3) && finite(p.rot, 3) && finite(p.scale, 3) && Number.isInteger(p.color) && p.color >= 0 && p.color <= 0xffffff
-      && [p.jit ?? 0, p.grad ?? 0, p.warp ?? 0].every(v => Number.isFinite(v) && Math.abs(v) <= 2)
+      && [p.jit ?? 0, p.grad ?? 0, p.warp ?? 0].every(v => Number.isFinite(v) && Math.abs(v) <= 2) && (p.g === undefined || GROUPS.includes(p.g))
       && Number.isInteger(p.seed ?? 7) && (!p.vx || Object.entries(p.vx).every(([k, d]) => /^\d+$/.test(k) && finite(d, 3) && d.every(v => Math.abs(v) <= 64)));
   });
 }

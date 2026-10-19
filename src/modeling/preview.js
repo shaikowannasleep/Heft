@@ -1,4 +1,5 @@
-// Export: models.json (recipes plus baked meshes) and a standalone preview.html that embeds the same JSON.
+// Export: models.json (recipes plus baked meshes) and a standalone preview.html. The viewer embeds three.js itself
+// (viewer.generated.js), so preview.html opens offline from disk.
 import { NAMES } from './recipe.js';
 
 const arr = a => Array.from(a, v => +v.toFixed(5));
@@ -14,16 +15,19 @@ export function modelsEnvelope(models) {
   };
 }
 
-const esc = json => json.replace(/</g, '\\u003c');   // keeps </script> out of the embedded data
+const esc = text => text.replace(/</g, '\\u003c');   // keeps </script> and <!-- out of the embedded data
 
-export function previewHtml(json) {
-  return PREVIEW_HEAD + esc(json) + PREVIEW_TAIL;
+export function previewHtml(json, lib) {
+  return PREVIEW_HEAD + esc(json) + PREVIEW_MID + esc(JSON.stringify(lib)) + PREVIEW_TAIL;
 }
 
-export function exportModels(models) {
+// Both downloads start inside the same click (after the lazy import, which is local and quick), so the browser
+// treats them as one user action.
+export async function exportModels(models) {
+  const { LIB } = await import('./viewer.generated.js');
   const json = JSON.stringify(modelsEnvelope(models));
   download(json, 'models.json', 'application/json');
-  setTimeout(() => download(previewHtml(json), 'preview.html', 'text/html'), 300);
+  download(previewHtml(json, LIB), 'preview.html', 'text/html');
 }
 
 function download(text, name, type) {
@@ -38,7 +42,6 @@ function download(text, name, type) {
 const PREVIEW_HEAD = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Heft models preview</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/"}}</script>
 <style>
 html,body{margin:0;height:100%;background:#202020;color:#d2d2d2;font:12px/1.4 system-ui,-apple-system,sans-serif;overflow:hidden}
 body{display:flex;flex-direction:column}
@@ -58,7 +61,7 @@ button:disabled,select:disabled,input:disabled{opacity:.4}
 <body>
 <div id="bar">
   <select id="model" title="Model"></select>
-  <button data-view="front">Front</button><button data-view="side">Side</button><button data-view="top">Top</button><button data-view="persp">Reset</button>
+  <button data-view="front" title="Front, orthographic (Numpad 1)">Front</button><button data-view="side" title="Side, orthographic (Numpad 3)">Side</button><button data-view="top" title="Top, orthographic (Numpad 7)">Top</button><button data-view="persp" title="Perspective reset (Numpad 5 toggles ortho)">Reset</button>
   <button id="wire" title="Wireframe">Wireframe</button>
   <button id="grid" class="on" title="Floor grid">Floor grid</button>
   <button id="skel" disabled title="Procedural models have no bones">Skeleton helper</button>
@@ -77,13 +80,14 @@ button:disabled,select:disabled,input:disabled{opacity:.4}
 </div>
 <script id="data" type="application/json">`;
 
-const PREVIEW_TAIL = `</script>
-<script type="module">
-import * as THREE from 'three';
-import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+const PREVIEW_MID = `</script>
+<script id="lib" type="application/json">`;
 
-let models = JSON.parse(document.getElementById('data').textContent).models;
+const PREVIEW_TAIL = `</script>
+<script>
 const $ = id => document.getElementById(id);
+const { THREE, OrbitControls } = new Function(JSON.parse($('lib').textContent) + '\\nreturn HeftLib;')();
+let models = JSON.parse($('data').textContent).models;
 const view = $('view'), sel = $('model'), wire = $('wire'), grid = $('grid');
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -91,7 +95,9 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 view.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x2a2a2a);
-const cam = new THREE.PerspectiveCamera(35, 1, 0.01, 500);
+const persp = new THREE.PerspectiveCamera(35, 1, 0.01, 500);
+const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 500);
+let cam = persp;
 const orbit = new OrbitControls(cam, renderer.domElement);
 orbit.enableDamping = true;
 orbit.screenSpacePanning = true;
@@ -104,11 +110,31 @@ scene.add(floor);
 const mat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
 let mesh = null, dist = 6;
 
-const VIEWS = { front: [0, 0, 1], side: [1, 0, 0], top: [0, 1, 0.0001], persp: [1, 0.6, 1] };
-function setView(name) {
-  cam.position.copy(orbit.target).addScaledVector(new THREE.Vector3(...VIEWS[name]).normalize(), dist);
-  orbit.update();
+const VIEWS = { front: [0, 0, 1], side: [1, 0, 0], top: [0, 1, 0], persp: [1, 0.6, 1] };
+function useProj(kind) {
+  const next = kind === 'ortho' ? ortho : persp;
+  if (next !== cam) { next.position.copy(cam.position); next.quaternion.copy(cam.quaternion); cam = next; orbit.object = cam; }
 }
+function fit() {
+  const w = view.clientWidth, h = view.clientHeight;
+  if (!w || !h) return;
+  renderer.setSize(w, h, false);
+  persp.aspect = w / h; persp.updateProjectionMatrix();
+  const half = dist * Math.tan(persp.fov * Math.PI / 360), ax = half * w / h;
+  Object.assign(ortho, { left: -ax, right: ax, top: half, bottom: -half }); ortho.updateProjectionMatrix();
+}
+function setView(name) {
+  useProj(name === 'persp' ? 'persp' : 'ortho');
+  const d = new THREE.Vector3(...VIEWS[name]); d.z += 1e-4;   // top view: keep the camera off the up axis
+  cam.position.copy(orbit.target).addScaledVector(d.normalize(), dist);
+  cam.zoom = 1; orbit.update(); fit();
+}
+addEventListener('keydown', e => {
+  if (e.target.closest?.('input,select')) return;
+  const map = { Numpad1: 'front', Numpad3: 'side', Numpad7: 'top', Numpad5: 'persp' };
+  if (e.code === 'Numpad5') { useProj(cam === persp ? 'ortho' : 'persp'); orbit.update(); fit(); }
+  else if (map[e.code]) setView(map[e.code]);
+});
 const finite9 = a => Array.isArray(a) && a.length > 0 && a.length % 9 === 0 && a.every(v => typeof v === 'number' && Number.isFinite(v));
 function valid(m) { return m && m.mesh && finite9(m.mesh.position) && finite9(m.mesh.normal) && finite9(m.mesh.color) && m.mesh.normal.length === m.mesh.position.length && m.mesh.color.length === m.mesh.position.length; }
 
@@ -152,16 +178,8 @@ $('file').onchange = e => e.target.files[0] && readFile(e.target.files[0]);
 view.ondragover = e => { e.preventDefault(); view.classList.add('drop'); };
 view.ondragleave = () => view.classList.remove('drop');
 view.ondrop = e => { e.preventDefault(); view.classList.remove('drop'); const f = e.dataTransfer.files[0]; if (f) readFile(f); };
-
-const size = () => {
-  const w = view.clientWidth, h = view.clientHeight;
-  if (!w || !h) return;
-  renderer.setSize(w, h, false);
-  cam.aspect = w / h;
-  cam.updateProjectionMatrix();
-};
-addEventListener('resize', size);
-size();
+addEventListener('resize', fit);
+fit();
 sel.replaceChildren(...models.map((m, i) => new Option(m.name || m.key || 'model ' + i, i)));
 load(0);
 renderer.setAnimationLoop(() => { orbit.update(); renderer.render(scene, cam); });

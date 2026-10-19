@@ -10,7 +10,7 @@ export function gameModels(html) {
     cut('const V3 = THREE.Vector3;', '// ---------------------------------------------------------------- renderer / scene'),
     mat[0],
     cut('// ---------------------------------------------------------------- geometry kit', '// ---------------------------------------------------------------- audio'),
-    'return { TREE_GEOS, ROCK_GEOS, STRUCT_GEO, buildBuilder };',
+    'return { TREE_GEOS, ROCK_GEOS, STRUCT_GEO, buildBuilder, applyModels };',
   ].join('\n');
   return new Function('THREE', body)(THREE);
 }
