@@ -119,6 +119,8 @@ export function createStudio(root) {
     const c = commands.find(c => c.keys === combo || c.alt === combo);
     if (!c) return;
     if (c.when && !c.when(ctx)) return;
+    // A panel with ownsKeys handles edit keys itself while it is the active panel (e.g. Delete removes a model part, not a tree).
+    if (c.id.startsWith('edit.') && panels.find(p => p.id === dock.activePanel?.id)?.ownsKeys) return;
     e.preventDefault(); c.run(ctx);
   });
 

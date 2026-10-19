@@ -10,7 +10,8 @@ function compactReplaces(e) {
   const key = p => p.path.join('\0');
   const fwd = new Map(); e.patches.forEach((p, i) => fwd.set(key(p), i));
   e.patches = e.patches.filter((p, i) => fwd.get(key(p)) === i);
-  const first = new Map(); e.inverse.forEach((p, i) => { if (!first.has(key(p))) first.set(key(p), i); });
+  // inverse is newest-first (unshift), so the last occurrence per path is the pre-gesture value
+  const first = new Map(); e.inverse.forEach((p, i) => first.set(key(p), i));
   e.inverse = e.inverse.filter((p, i) => first.get(key(p)) === i);
 }
 
