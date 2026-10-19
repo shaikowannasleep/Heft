@@ -1,13 +1,14 @@
 // Scene 2D: top-down canvas of the island. Pan, zoom, pick, move / rotate / scale with snapping, overlays.
 import { h } from '../core/dom.js';
 import { CAMP_R, DEPOSIT_R, PLAYER_R, PILE_MAX, islandRA } from '../core/heft-data.js';
-import { view2, zoomAt, frameBox, gridStep, sceneItems, pickAt, idsInRect, rectOf, boundsOf, moveDelta, sweepRot, snapTo, DEG, pileSlot } from './geom.js';
-import { tbtn, popover, viewMenu } from './ui.js';
+import { view2, zoomAt, frameBox, gridStep, sceneItems, pickAt, idsInRect, rectOf, boundsOf, moveDelta, sweepRot, snapTo, DEG, pileSlot, gizmoHit, clamp } from './geom.js';
+import { tbtn, popover, viewMenu, closePopover, moreButton } from './ui.js';
 
 const COL = { water: '#3b7f92', sand: '#d9c088', grass: '#7c9f4f', ring: '#ffcf6a', sel: '#ffa43d', tree: ['#3f6b3a', '#6a9440', '#d08a33'],
   trunk: '#6b4a2f', rock: ['#8f897d', '#8a8478'], wood: '#9a6a3c', stone: '#8d877c', wall: '#8f5f36', bench: '#ae7d43', player: '#e2a57a',
   x: '#e2504c', z: '#4b8cf5', acc: '#3d8bfd' };
 const gone = o => o.removed || !(o.hp > 0);
+const HCUR = { x: 'ew-resize', sx: 'ew-resize', z: 'ns-resize', sz: 'ns-resize', xz: 'move', u: 'nwse-resize', rot: 'grab' };
 
 export function scene2d(sh) {
   const { ctx } = sh, { store, data } = ctx;
@@ -15,8 +16,9 @@ export function scene2d(sh) {
   const g = canvas.getContext('2d');
   const area = h('div', { class: 'vp-view' }, canvas, readout);
   let cam = { cx: 0, cz: 0, scale: 4 }, W = 0, H = 0, dpr = 1, framed = false, dirty = true, drag = null, gid = 0, cursor = [0, 0];
-  let btnGrid, btnLink;
+  let btnGrid, btnLink, disposed = false, hovH = null;   // hovH: gizmo handle under the pointer
   const self = {};
+  const ac = new AbortController(), L = { signal: ac.signal };   // every DOM listener of this view goes through this signal
 
   const view = () => view2(cam.cx, cam.cz, cam.scale, W, H);
   const items = () => sceneItems(store.project, data.STRUCT);
@@ -48,33 +50,40 @@ export function scene2d(sh) {
     const mod = e.ctrlKey || e.metaKey || e.shiftKey, tool = store.ui.tool, ids = store.selection;
     if (e.button === 1 || (e.button === 0 && (e.altKey || sh.space))) {
       drag = { kind: 'pan', sx, sy, cx: cam.cx, cz: cam.cz };
+      canvas.setPointerCapture(e.pointerId); e.preventDefault();   // middle button: no autoscroll, drag keeps tracking outside the canvas
     } else if (e.button === 0) {
       canvas.setPointerCapture(e.pointerId);
-      const pv = ids.length ? pivotOf(ids) : null;
-      if (pv && sh.gizmos && tool === 'rotate' && Math.abs(Math.hypot(wx - pv.x, wz - pv.z) - pv.R) < px(8)) {
-        drag = { kind: 'rotate', ...pv, a: Math.atan2(wz - pv.z, wx - pv.x), t: 0, starts: sh.starts(ids), key: 'rot' + ++gid };
-      } else if (pv && sh.gizmos && tool === 'scale' && Math.hypot(wx - (pv.x + pv.R * 0.7071), wz - (pv.z + pv.R * 0.7071)) < px(12)) {
-        drag = { kind: 'scale', ...pv, d0: Math.hypot(wx - pv.x, wz - pv.z) || 1, starts: sh.starts(ids), key: 'scl' + ++gid };
-      } else {
+      const pv = ids.length && sh.gizmos ? pivotOf(ids) : null, hh = pv ? gizmoHit(tool, pv, wx, wz, px(1)) : null;
+      if (hh === 'rot') drag = { kind: 'rotate', ...pv, a: Math.atan2(wz - pv.z, wx - pv.x), t: 0, starts: sh.starts(ids), key: 'rot' + ++gid };
+      else if (hh === 'u') drag = { kind: 'scale', ...pv, d0: Math.hypot(wx - pv.x, wz - pv.z) || 1, starts: sh.starts(ids), key: 'scl' + ++gid };
+      else if (hh === 'sx' || hh === 'sz') drag = { kind: 'spread', ...pv, axis: hh, f0: (hh === 'sx' ? wx - pv.x : wz - pv.z) || 1, starts: sh.starts(ids), key: 'spr' + ++gid };
+      else if (hh) drag = { kind: 'move', sx, sy, w0: [wx, wz], starts: sh.starts(ids), anchor: { x: pv.x, z: pv.z }, moved: false, click: null, axis: hh, key: 'mv' + ++gid };
+      else {
         const hit = pickAt(items(), wx, wz, px(6));
         if (hit && mod) drag = { kind: 'click', hit, e };
         else if (hit) {
           const pre = ids.includes(hit);
           if (!pre) sh.select([hit], e);
           const starts = sh.starts(store.selection), b = boundsOf(starts.map(s => ({ x: s.x, z: s.z })));
-          drag = { kind: 'move', sx, sy, w0: [wx, wz], starts, anchor: { x: b.cx, z: b.cz }, moved: false, click: pre ? hit : null, key: 'mv' + ++gid };
+          drag = { kind: 'move', sx, sy, w0: [wx, wz], starts, anchor: { x: b.cx, z: b.cz }, moved: false, click: pre ? hit : null, axis: 'xz', key: 'mv' + ++gid };
         } else drag = { kind: 'marquee', x0: sx, y0: sy, x1: sx, y1: sy, e, moved: false };
       }
     }
     canvas.style.cursor = drag?.kind === 'pan' ? 'grabbing' : '';
     dirty = true;
-  });
+  }, L);
 
   canvas.addEventListener('pointermove', e => {
     if (!W) return;
     const [sx, sy] = local(e), v = view(), [wx, wz] = v.toWorld(sx, sy);
     cursor = [wx, wz]; info();
-    if (!drag) { sh.setHover(pickAt(items(), wx, wz, px(6))); return; }
+    if (!drag) {
+      sh.setHover(pickAt(items(), wx, wz, px(6)));
+      const pv = sh.gizmos && store.selection.length ? pivotOf(store.selection) : null, hh = pv ? gizmoHit(store.ui.tool, pv, wx, wz, px(1)) : null;
+      if (hh !== hovH) { hovH = hh; dirty = true; }
+      canvas.style.cursor = HCUR[hh] ?? '';
+      return;
+    }
     const d = drag;
     if (d.kind === 'pan') {
       cam.cx = d.cx - (sx - d.sx) / cam.scale; cam.cz = d.cz - (sy - d.sy) / cam.scale;
@@ -83,6 +92,7 @@ export function scene2d(sh) {
       if (!d.moved && Math.hypot(sx - d.sx, sy - d.sy) < 3) return;
       d.moved = true;
       const m = moveDelta(d.anchor, { dx: wx - d.w0[0], dz: wz - d.w0[1] }, store.ui.snap, store.ui.snapMove);
+      if (d.axis === 'x') m.dz = 0; else if (d.axis === 'z') m.dx = 0;   // arrows constrain; the centre square moves freely
       sh.commit('Move', d.starts, { kind: 'move', dx: m.dx, dz: m.dz }, d.key);
     } else if (d.kind === 'rotate') {
       const a = Math.atan2(wz - d.z, wx - d.x);
@@ -92,12 +102,15 @@ export function scene2d(sh) {
     } else if (d.kind === 'scale') {
       const f = Math.hypot(wx - d.x, wz - d.z) / d.d0;
       sh.commit('Scale', d.starts, { kind: 'scale', f, snap: store.ui.snap }, d.key);
+    } else if (d.kind === 'spread') {
+      const r = clamp((d.axis === 'sx' ? wx - d.x : wz - d.z) / d.f0, 0.1, 5), f = store.ui.snap ? clamp(snapTo(r, 0.05), 0.1, 5) : r;
+      sh.commit('Scale', d.starts, { kind: 'spread', px: d.x, pz: d.z, fx: d.axis === 'sx' ? f : 1, fz: d.axis === 'sz' ? f : 1 }, d.key);
     } else if (d.kind === 'marquee') {
       d.x1 = sx; d.y1 = sy;
       if (!d.moved && Math.hypot(sx - d.x0, sy - d.y0) < 3) return;
       d.moved = true; dirty = true;
     }
-  });
+  }, L);
 
   const end = e => {
     const d = drag; drag = null; canvas.style.cursor = '';
@@ -110,15 +123,16 @@ export function scene2d(sh) {
     else if (d.kind === 'move' && !d.moved && d.click) sh.select([d.click], e);
     dirty = true;
   };
-  canvas.addEventListener('pointerup', end);
-  canvas.addEventListener('pointercancel', end);
+  canvas.addEventListener('pointerup', end, L);
+  canvas.addEventListener('pointercancel', end, L);
+  canvas.addEventListener('pointerleave', () => { if (hovH) { hovH = null; dirty = true; } }, L);
 
   canvas.addEventListener('wheel', e => {
     e.preventDefault();
     const [sx, sy] = local(e);
     cam = zoomAt(view(), sx, sy, Math.exp(-e.deltaY * 0.0015));
     sh.linkFrom(self, cam.cx, cam.cz); dirty = true; info();
-  }, { passive: false });
+  }, { passive: false, signal: ac.signal });
 
   // ---------------------------------------------------------------- draw
   function draw() {
@@ -216,7 +230,7 @@ export function scene2d(sh) {
       disc(it.x, it.z, it.r + px(3)); c.strokeStyle = COL.sel; c.stroke();
     }
     if (sh.hover && !store.selection.includes(sh.hover) && byId.has(sh.hover)) {
-      const it = byId.get(sh.hover); disc(it.x, it.z, it.r + px(2)); c.setLineDash([4, 3]); c.strokeStyle = '#fff'; c.lineWidth = 1.5; c.stroke(); c.setLineDash([]);
+      const it = byId.get(sh.hover); disc(it.x, it.z, it.r + px(2)); c.strokeStyle = '#8ec5ff'; c.lineWidth = 1; c.stroke();   // thin light blue, apart from the orange selection
     }
     if (sh.gizmos && store.selection.length) {
       const pv = pivotOf(store.selection);
@@ -227,15 +241,21 @@ export function scene2d(sh) {
           const [a0, b0] = v.toScreen(b.minX, b.minZ), [a1, b1] = v.toScreen(b.maxX, b.maxZ);
           c.setLineDash([4, 3]); c.strokeStyle = COL.sel; c.lineWidth = 1; c.strokeRect(a0, b0, a1 - a0, b1 - b0); c.setLineDash([]);
         }
+        const lit = name => hovH === name || drag?.axis === name;   // hovered, or the handle being dragged
         if (tool === 'move') {
-          const arrow = (x1, y1, col) => {
-            c.beginPath(); c.moveTo(qx, qy); c.lineTo(x1, y1); c.strokeStyle = col; c.lineWidth = 2; c.stroke();
-            const a = Math.atan2(y1 - qy, x1 - qx); c.beginPath(); c.moveTo(x1, y1); c.lineTo(x1 - 9 * Math.cos(a - 0.4), y1 - 9 * Math.sin(a - 0.4)); c.lineTo(x1 - 9 * Math.cos(a + 0.4), y1 - 9 * Math.sin(a + 0.4)); c.closePath(); c.fillStyle = col; c.fill();
+          const arrow = (name, x1, y1, col) => {
+            const on = lit(name), k = on ? '#fff' : col;
+            c.beginPath(); c.moveTo(qx, qy); c.lineTo(x1, y1); c.strokeStyle = k; c.lineWidth = on ? 3.5 : 2; c.stroke();
+            const a = Math.atan2(y1 - qy, x1 - qx); c.beginPath(); c.moveTo(x1, y1); c.lineTo(x1 - 9 * Math.cos(a - 0.4), y1 - 9 * Math.sin(a - 0.4)); c.lineTo(x1 - 9 * Math.cos(a + 0.4), y1 - 9 * Math.sin(a + 0.4)); c.closePath(); c.fillStyle = k; c.fill();
           };
-          arrow(...v.toScreen(pv.x + 2.4, pv.z), COL.x); arrow(...v.toScreen(pv.x, pv.z + 2.4), COL.z);
+          arrow('x', ...v.toScreen(pv.x + px(60), pv.z), COL.x); arrow('z', ...v.toScreen(pv.x, pv.z + px(60)), COL.z);
+          c.fillStyle = lit('xz') ? '#fff' : COL.acc; c.fillRect(qx - 5, qy - 5, 10, 10);
         }
         if (tool === 'rotate') { disc(pv.x, pv.z, pv.R); c.setLineDash([5, 4]); c.strokeStyle = COL.sel; c.lineWidth = 1.5; c.stroke(); c.setLineDash([]); const [hx, hy] = v.toScreen(pv.x, pv.z - pv.R); c.beginPath(); c.arc(hx, hy, 5, 0, Math.PI * 2); c.fillStyle = COL.sel; c.fill(); }
-        if (tool === 'scale') { const [hx, hy] = v.toScreen(pv.x + pv.R * 0.7071, pv.z + pv.R * 0.7071); c.beginPath(); c.moveTo(qx, qy); c.lineTo(hx, hy); c.strokeStyle = COL.sel; c.lineWidth = 1; c.stroke(); c.fillStyle = COL.sel; c.fillRect(hx - 4, hy - 4, 8, 8); }
+        if (tool === 'scale') {
+          const knob = (name, ax, az) => { const [hx, hy] = v.toScreen(pv.x + ax, pv.z + az), on = lit(name); c.beginPath(); c.moveTo(qx, qy); c.lineTo(hx, hy); c.strokeStyle = on ? '#fff' : COL.sel; c.lineWidth = on ? 2 : 1; c.stroke(); c.fillStyle = on ? '#fff' : COL.sel; c.fillRect(hx - 4, hy - 4, 8, 8); };
+          knob('sx', pv.R, 0); knob('sz', 0, pv.R); knob('u', pv.R * 0.7071, pv.R * 0.7071);
+        }
         c.beginPath(); c.arc(qx, qy, 3, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill();
       }
     }
@@ -262,16 +282,21 @@ export function scene2d(sh) {
     sh.link = !sh.link; if (sh.link) sh.linkFrom(self, cam.cx, cam.cz); sh.redraw();
   });
   const btnOv = tbtn('Overlays ▾', 'Overlays, gizmos and grid', false, () => popover(btnOv, viewMenu(sh)));
-  const bar = h('div', { class: 'vp-bar' }, h('span', { class: 'vp-title' }, 'Scene 2D · Top'), h('span', { class: 'sp' }), btnFrame, btnGrid, btnLink, btnOv);
+  const more = moreButton(() => [
+    { label: 'Frame selection', checked: false, run: () => btnFrame.click() },
+    { label: 'Link cameras', checked: sh.link, run: () => btnLink.click() },
+    ...viewMenu(sh),
+  ]);
+  const bar = h('div', { class: 'vp-bar' }, h('span', { class: 'vp-title' }, 'Scene 2D · Top'), h('span', { class: 'sp' }), h('div', { class: 'vp-grp vp-collapse' }, btnFrame, btnGrid, btnLink, btnOv), more);
   const root = h('div', { class: 'vp' }, bar, area);
 
-  new ResizeObserver(resize).observe(area);
+  const ro = new ResizeObserver(() => !disposed && resize()); ro.observe(area);
   Object.assign(self, {
     element: root,
     update() { dirty = true; },
     onResize: resize,
     dirty() { dirty = true; },
-    tick() { if (dirty && W > 1) { dirty = false; draw(); } },
+    tick() { if (!disposed && dirty && W > 1) { dirty = false; draw(); } },
     centre: () => ({ x: cam.cx, z: cam.cz }),
     scale: () => cam.scale,
     setCentre(x, z) { cam.cx = x; cam.cz = z; dirty = true; info(); },
@@ -279,7 +304,11 @@ export function scene2d(sh) {
       if (W < 2) return;
       cam = frameBox(b, W, H); sh.linkFrom(self, cam.cx, cam.cz); dirty = true; info();
     },
-    dispose() { sh.views.delete(self); if (sh.v2 === self) sh.v2 = null; },
+    dispose() {
+      if (disposed) return; disposed = true;
+      ac.abort(); ro.disconnect(); closePopover();
+      drag = null; sh.views.delete(self); if (sh.v2 === self) sh.v2 = null;
+    },
   });
   sh.views.add(self); sh.v2 = self;
   info();

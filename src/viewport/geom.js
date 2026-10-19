@@ -87,14 +87,25 @@ export function rayCylinder(o, d, cx, cz, r, h) {
 
 export const rectOf = (x0, y0, x1, y1) => ({ x: Math.min(x0, x1), y: Math.min(y0, y1), w: Math.abs(x1 - x0), h: Math.abs(y1 - y0) });
 
-// Ids whose centre projects inside the screen rectangle. project(x, z) => [sx, sy].
-export function idsInRect(items, project, rc) {
-  const out = [];
-  for (const it of items) {
-    const [sx, sy] = project(it.x, it.z);
-    if (sx >= rc.x && sx <= rc.x + rc.w && sy >= rc.y && sy <= rc.y + rc.h) out.push(it.id);
+// True when the screen segment a-b touches the rectangle (an end inside, or a crossing; Liang-Barsky clip).
+export function segHitsRect([ax, ay], [bx, by], rc) {
+  const inside = (x, y) => x >= rc.x && x <= rc.x + rc.w && y >= rc.y && y <= rc.y + rc.h;
+  if (inside(ax, ay) || inside(bx, by)) return true;
+  const dx = bx - ax, dy = by - ay;
+  let t0 = 0, t1 = 1;
+  for (const [p, q] of [[-dx, ax - rc.x], [dx, rc.x + rc.w - ax], [-dy, ay - rc.y], [dy, rc.y + rc.h - ay]]) {
+    if (p === 0) { if (q < 0) return false; continue; }
+    const t = q / p;
+    if (p < 0) { if (t > t1) return false; t0 = Math.max(t0, t); }
+    else { if (t < t0) return false; t1 = Math.min(t1, t); }
   }
-  return out;
+  return t0 <= t1;
+}
+
+// Ids whose vertical extent (base to top, from h) crosses the screen rectangle, so a tall tree counts when its body is inside.
+// project(x, z, y) => [sx, sy]; a 2D projector that ignores y gives a point test.
+export function idsInRect(items, project, rc) {
+  return items.filter(it => segHitsRect(project(it.x, it.z, 0), project(it.x, it.z, it.h ?? 0), rc)).map(it => it.id);
 }
 
 // mode: 'set' (plain click or drag), 'add' (Shift), 'toggle' (Ctrl / Cmd).
@@ -143,15 +154,58 @@ export function xformed(st, op) {
     const [nx, nz] = rotY(st.x - op.px, st.z - op.pz, op.t);
     return { x: r2(op.px + nx), z: r2(op.pz + nz), rot: r3(st.rot + op.t) };
   }
+  // Axis scale: spreads positions about the pivot along X and/or Z. Sizes are uniform only (the data model has one s per node).
+  if (op.kind === 'spread') return { x: r2(op.px + (st.x - op.px) * op.fx), z: r2(op.pz + (st.z - op.pz) * op.fz) };
   if (st.s == null) return {};
   let s = st.s * op.f;
   if (op.snap) s = snapTo(s, 0.05);
   return { s: r2(clamp(s, 0.5, 2)) };
 }
 
+// 2D gizmo hit test: which handle is under world point (wx, wz). m = metres per screen pixel; handles are screen-sized.
+// move: xz centre square, x / z arrows (60 px); scale: sx / sz axis handles and u uniform corner, all on radius R; rotate: ring.
+export function gizmoHit(tool, pv, wx, wz, m) {
+  const dx = wx - pv.x, dz = wz - pv.z;
+  if (tool === 'move') {
+    if (Math.abs(dx) <= 7 * m && Math.abs(dz) <= 7 * m) return 'xz';
+    const L = 60 * m, tol = 6 * m;
+    if (Math.abs(dz) <= tol && dx >= 0 && dx <= L + tol) return 'x';
+    if (Math.abs(dx) <= tol && dz >= 0 && dz <= L + tol) return 'z';
+    return null;
+  }
+  if (tool === 'scale') {
+    const near = (ax, az, r) => Math.hypot(wx - (pv.x + ax), wz - (pv.z + az)) < r * m;
+    if (near(pv.R * 0.7071, pv.R * 0.7071, 12)) return 'u';
+    if (near(pv.R, 0, 10)) return 'sx';
+    if (near(0, pv.R, 10)) return 'sz';
+    return null;
+  }
+  if (tool === 'rotate') return Math.abs(Math.hypot(dx, dz) - pv.R) < 8 * m ? 'rot' : null;
+  return null;
+}
+
 // Orbit camera position around a target for yaw and elevation. yaw = PI/4, el = 0.64 is the game's iso view.
 export function orbitPos(t, yaw, el, dist) {
   return [t[0] + Math.sin(yaw) * Math.cos(el) * dist, t[1] + Math.sin(el) * dist, t[2] + Math.cos(yaw) * Math.cos(el) * dist];
+}
+
+// Opacities of the 1 / 5 / 25 m floor grids at a zoom (ppm = screen pixels per metre). A grid fades in once its cells reach
+// 6 px and the coarser ones fade out once they reach 48 px, so the grid steps down smoothly as you zoom in, with no popping or moire.
+export function gridAlphas(ppm) {
+  const sm = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+  return { a1: sm(6, 14, ppm), a5: sm(6, 14, 5 * ppm) * (1 - sm(48, 96, 5 * ppm)), a25: sm(6, 14, 25 * ppm) * (1 - sm(48, 96, 25 * ppm)) };
+}
+
+// Where a ray (origin o, direction d) meets the ground plane y = 0. The ray must not be parallel to it.
+export function groundHit(o, d) {
+  const t = -o[1] / d[1];
+  return [o[0] + d[0] * t, 0, o[2] + d[2] * t];
+}
+
+// Zoom toward a point P: the orbit target moves with the camera so P keeps its screen position (k = newDist / oldDist).
+// Both perspective and orthographic projections scale about P, so one formula covers both.
+export function dollyTarget(t, P, k) {
+  return [0, 1, 2].map(i => P[i] + (t[i] - P[i]) * k);
 }
 
 // Ground claim field for the shader (port of the game's rebuildClaims): 0..255 per cell, 128 is the claim edge.

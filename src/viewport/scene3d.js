@@ -3,9 +3,9 @@ import * as THREE from 'three';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import { h } from '../core/dom.js';
 import { SPAN, CAMP_R, DEPOSIT_R, PILE_MAX } from '../core/heft-data.js';
-import { sceneItems, pickRay, idsInRect, rectOf, boundsOf, orbitPos, territoryField, pileSlot, scaleFactor, clamp } from './geom.js';
+import { sceneItems, pickRay, idsInRect, rectOf, boundsOf, orbitPos, territoryField, pileSlot, scaleFactor, clamp, groundHit, dollyTarget, gridAlphas } from './geom.js';
 import { fallbackGeometry, structureGroup, buildGround, MAT } from './fallback.js';
-import { tbtn, popover, viewMenu } from './ui.js';
+import { tbtn, popover, viewMenu, closePopover, moreButton } from './ui.js';
 
 const RAD = Math.PI / 180, TANH = Math.tan(17.5 * RAD), ORTHO_H = 0.36;   // half-height per metre of distance (ortho) / half-fov tangent (persp)
 const PRESET = {
@@ -14,15 +14,19 @@ const PRESET = {
   persp: { yaw: Math.PI / 4, el: 0.64, persp: true },
 };
 const MODE = { move: 'translate', rotate: 'rotate', scale: 'scale' };
+// Handles each tool shows: move = X, Z and the XZ plane (no Y); rotate = Y ring only; scale = XZ plane and uniform XYZ.
+const KEEP = { translate: ['X', 'Z', 'XZ', 'START', 'END', 'DELTA'], rotate: ['Y'], scale: ['XZ', 'XYZ'] };
 const AXIS_COL = ['#e2504c', '#7bd148', '#4b8cf5'];
 const gone = o => o.removed || !(o.hp > 0);
 const resKey = o => gone(o) ? (o.kind === 'tree' ? 'stump' : 'rubble') : o.kind + '.' + o.v;
 
 export function scene3d(sh) {
   const { ctx } = sh, { store, data } = ctx;
+  const ac = new AbortController(), L = { signal: ac.signal };   // every DOM listener of this view goes through this signal
+  let disposed = false;
   const wrap = h('div', { class: 'vp-view' });
   const renderer = new THREE.WebGLRenderer({ antialias: true });
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFShadowMap; renderer.shadowMap.autoUpdate = false;   // redrawn only when the scene changes
   renderer.toneMapping = THREE.NeutralToneMapping; renderer.toneMappingExposure = 1;
   const cvs = renderer.domElement; cvs.className = 'vp-canvas';
   const axisCv = h('canvas', { class: 'vp-axis' });
@@ -34,7 +38,7 @@ export function scene3d(sh) {
   // ---------------------------------------------------------------- scene, lights (game values at dayTime 0.08)
   const scene = new THREE.Scene(); scene.background = new THREE.Color(0xa9d3e6);
   const hemi = new THREE.HemisphereLight(0xfff1dc, 0x6a5a3c, 1.0);
-  const sun = new THREE.DirectionalLight(0xfff0d8, 2.4); sun.castShadow = true;
+  const sun = new THREE.DirectionalLight(0xfff0d8, 2.4); sun.castShadow = true; sun.position.set(22, 40, 14);   // fixed over the island, so shadows do not move with the camera
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -55, right: 55, top: 55, bottom: -55, near: 1, far: 300 });
   sun.shadow.bias = -0.0006; sun.shadow.normalBias = 0.03;
@@ -44,14 +48,20 @@ export function scene3d(sh) {
 
   const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.5, 900), persp = new THREE.PerspectiveCamera(35, 1, 0.5, 900);
   const cam = { tx: 0, ty: 0.5, tz: 0, yaw: PRESET.iso.yaw, el: PRESET.iso.el, dist: 150, persp: false };
-  let cur = ortho, preset = 'iso', W = 0, H = 0, projDirty = true, selDirty = true, last = 0, drag3 = null, gid = 0, wire = false;
+  let cur = ortho, preset = 'iso', W = 0, H = 0, projDirty = true, selDirty = true, drag3 = null, gid = 0, wire = false;
+  let needDraw = true, shadowDirty = true, lastDraw = 0, lastKey = '';
+  const IDLE_MS = 250;   // redraw this often with nothing changed, so the water and flames keep moving
 
   // ---------------------------------------------------------------- ground, water, territory (shared with the fallback module)
   const territory = new THREE.DataTexture(territoryField([], 256, SPAN), 256, 256, THREE.RedFormat, THREE.UnsignedByteType);
   territory.minFilter = territory.magFilter = THREE.LinearFilter; territory.needsUpdate = true;
   const ground = buildGround(territory); scene.add(ground.root);
-  const floor = new THREE.GridHelper(SPAN, SPAN, 0x000000, 0x000000);
-  floor.material.transparent = true; floor.material.opacity = 0.14; floor.material.depthWrite = false; floor.position.y = 0.06; scene.add(floor);
+  // 1, 5 and 25 m floor grids; gridAlphas() decides how much of each one shows at the current zoom.
+  const floors = [[1, 0.1], [5, 0.16], [25, 0.22]].map(([step, op]) => {
+    const g = new THREE.GridHelper(SPAN, SPAN / step, 0x000000, 0x000000);
+    g.material.transparent = true; g.material.opacity = 0; g.material.depthWrite = false; g.position.y = 0.06; scene.add(g);
+    return { g, op };
+  });
   let territorySig = '';
 
   // ---------------------------------------------------------------- geometry lookup: bag.models wins, fallback otherwise
@@ -145,14 +155,16 @@ export function scene3d(sh) {
 
   // ---------------------------------------------------------------- overlays (bag.overlays object3d, rebuilt when rev changes)
   const ovCache = new Map();
-  function syncOverlays() {
+  function syncOverlays() {   // returns true when something visible changed, so the shadow map needs redrawing
+    let changed = false;
     for (const o of ctx.bag.overlays) {
       if (!o.object3d) continue;
       let c = ovCache.get(o.id);
-      if (!o.enabled) { if (c) c.obj.visible = false; continue; }
-      if (!c || c.rev !== o.rev) { if (c) ovGroup.remove(c.obj); c = { rev: o.rev, obj: o.object3d(THREE) }; ovGroup.add(c.obj); ovCache.set(o.id, c); }
-      c.obj.visible = true;
+      if (!o.enabled) { if (c && c.obj.visible) { c.obj.visible = false; changed = true; } continue; }
+      if (!c || c.rev !== o.rev) { if (c) ovGroup.remove(c.obj); c = { rev: o.rev, obj: o.object3d(THREE) }; ovGroup.add(c.obj); ovCache.set(o.id, c); changed = true; }
+      if (!c.obj.visible) { c.obj.visible = true; changed = true; }
     }
+    return changed;
   }
 
   // ---------------------------------------------------------------- selection and hover outlines (inverted hull, scaled 1.07)
@@ -192,6 +204,10 @@ export function scene3d(sh) {
   // ---------------------------------------------------------------- gizmo: TransformControls on a pivot at the selection bounds
   const tc = new TransformControls(cur, cvs), pivot = new THREE.Object3D();
   scene.add(pivot, tc.getHelper());
+  // three keeps three handle sets per mode (gizmo, picker, helper) on its gizmo object (r186). Drop what the tools do not
+  // use, and the 1e6-long guide lines that TransformControls draws across the whole island while dragging.
+  for (const set of [tc._gizmo.gizmo, tc._gizmo.picker, tc._gizmo.helper]) for (const mode in set)
+    for (const o of [...set[mode].children]) if (!KEEP[mode].includes(o.name) || (o.isLine && o.scale.x > 1e5)) o.removeFromParent();
   function placePivot() {
     const b = boundsOf(sh.starts(store.selection).map(s => ({ x: s.x, z: s.z })));
     if (!b) return;
@@ -202,7 +218,6 @@ export function scene3d(sh) {
     if (!on) { tc.detach(); return; }
     if (!drag3) placePivot();
     tc.setMode(MODE[tool]);
-    tc.showX = tool !== 'rotate'; tc.showY = tool !== 'move'; tc.showZ = tool !== 'rotate';
     tc.setTranslationSnap(store.ui.snap ? store.ui.snapMove : null);
     tc.setRotationSnap(store.ui.snap ? store.ui.snapRotate * RAD : null);
     tc.setScaleSnap(store.ui.snap ? 0.05 : null);
@@ -222,15 +237,20 @@ export function scene3d(sh) {
   // ---------------------------------------------------------------- picking
   const _v1 = new THREE.Vector3(), _v2 = new THREE.Vector3(), _v3 = new THREE.Vector3();
   const local = e => { const r = cvs.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
-  function pick(sx, sy) {
+  // Ray (origin, unit direction) through a canvas pixel, from the camera as last drawn.
+  function rayAt(sx, sy) {
     const nx = sx / W * 2 - 1, ny = -(sy / H) * 2 + 1;
     _v1.set(nx, ny, -1).unproject(cur); _v2.set(nx, ny, 1).unproject(cur);
     const d = _v2.sub(_v1).normalize();
-    return pickRay(sceneItems(store.project, data.STRUCT), [_v1.x, _v1.y, _v1.z], [d.x, d.y, d.z]);
+    return [[_v1.x, _v1.y, _v1.z], [d.x, d.y, d.z]];
   }
-  const toScreen = (x, z) => { _v3.set(x, 0.5, z).project(cur); return [(_v3.x + 1) / 2 * W, (1 - _v3.y) / 2 * H]; };
+  function pick(sx, sy) {
+    const [o, d] = rayAt(sx, sy);
+    return pickRay(sceneItems(store.project, data.STRUCT), o, d);
+  }
+  const toScreen = (x, z, y = 0.5) => { _v3.set(x, y, z).project(cur); return [(_v3.x + 1) / 2 * W, (1 - _v3.y) / 2 * H]; };
 
-  cvs.addEventListener('contextmenu', e => e.preventDefault());
+  cvs.addEventListener('contextmenu', e => e.preventDefault(), L);
   let pd = null;
   cvs.addEventListener('pointerdown', e => {
     if (tc.dragging || !W) return;
@@ -240,11 +260,11 @@ export function scene3d(sh) {
     else if (e.button === 0) pd = { kind: 'lmb', x0: sx, y0: sy, sx, sy, e, hit: pick(sx, sy), moved: false };
     else return;
     cvs.setPointerCapture(e.pointerId);
-  });
+  }, L);
   cvs.addEventListener('pointermove', e => {
     if (!W) return;
     const [sx, sy] = local(e);
-    if (!pd) { sh.setHover(pick(sx, sy)); return; }
+    if (!pd) { if (!tc.dragging) sh.setHover(pick(sx, sy)); return; }   // no hover churn while a gizmo drag runs
     const dx = sx - pd.sx, dy = sy - pd.sy; pd.sx = sx; pd.sy = sy;
     if (pd.kind === 'orbit') {
       cam.yaw -= dx * 0.008; cam.el = clamp(cam.el + dy * 0.006, 0.05, Math.PI / 2 - 0.0005); preset = 'custom';
@@ -258,7 +278,7 @@ export function scene3d(sh) {
       Object.assign(marq.style, { left: Math.min(pd.x0, sx) + 'px', top: Math.min(pd.y0, sy) + 'px', width: Math.abs(sx - pd.x0) + 'px', height: Math.abs(sy - pd.y0) + 'px' });
       marq.hidden = false;
     }
-  });
+  }, L);
   const endPtr = e => {
     const p = pd; pd = null; if (!p) return;
     if (p.kind === 'lmb') {
@@ -268,9 +288,17 @@ export function scene3d(sh) {
       else sh.select(p.hit ? [p.hit] : [], p.e);
     }
   };
-  cvs.addEventListener('pointerup', endPtr);
-  cvs.addEventListener('pointercancel', endPtr);
-  cvs.addEventListener('wheel', e => { e.preventDefault(); cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0012), 6, 500); }, { passive: false });
+  cvs.addEventListener('pointerup', endPtr, L);
+  cvs.addEventListener('pointercancel', endPtr, L);
+  // Zoom toward the cursor: the ground point under it keeps its screen position (see dollyTarget).
+  cvs.addEventListener('wheel', e => {
+    e.preventDefault();
+    updateCamera();   // several wheel events can land before the next frame, so the ray must come from the current camera
+    const [sx, sy] = local(e), [o, d] = rayAt(sx, sy), P = groundHit(o, d), d0 = cam.dist;
+    cam.dist = clamp(cam.dist * Math.exp(e.deltaY * 0.0012), 6, 500);
+    [cam.tx, cam.ty, cam.tz] = dollyTarget([cam.tx, cam.ty, cam.tz], P, cam.dist / d0);
+    sh.linkFrom(self, cam.tx, cam.tz);
+  }, { passive: false, signal: ac.signal });
 
   // ---------------------------------------------------------------- camera
   function setPreset(p) {
@@ -296,7 +324,6 @@ export function scene3d(sh) {
       persp.aspect = aspect; persp.updateProjectionMatrix();
       fog.near = cam.dist; fog.far = cam.dist * 2.6; scene.fog = fog;
     }
-    sun.position.set(cam.tx + 22, 40, cam.tz + 14); sun.target.position.set(cam.tx, 0, cam.tz); sun.target.updateMatrixWorld();
   }
 
   // ---------------------------------------------------------------- axis gizmo (click an end to look down that axis)
@@ -319,11 +346,11 @@ export function scene3d(sh) {
     const r = axisCv.getBoundingClientRect(), mx = e.clientX - r.left, my = e.clientY - r.top;
     let best = null, bd = 12;
     for (const a of axisHits) { const d = Math.hypot(a.sx - mx, a.sy - my); if (d < bd) { bd = d; best = a; } }
-    if (!best) return;
+    if (!best) { if (Math.hypot(mx - 46, my - 46) < 14) toggleProj(); return; }   // the centre of the axis gizmo flips ortho / persp
     const [ax0, ay0, az0] = best.d;
     cam.yaw = Math.atan2(ax0, az0); cam.el = clamp(Math.asin(ay0), 0, Math.PI / 2 - 0.0005); preset = 'custom';
     e.stopPropagation();
-  });
+  }, L);
 
   // ---------------------------------------------------------------- resize, stats
   function resize() {
@@ -360,8 +387,16 @@ export function scene3d(sh) {
     sh.link = !sh.link; if (sh.link) sh.linkFrom(self, cam.tx, cam.tz); sh.redraw();
   });
   const btnOv = tbtn('Overlays ▾', 'Overlays, gizmos and grid', false, () => popover(btnOv, viewMenu(sh)));
+  const more = moreButton(() => [
+    { label: 'Top', checked: preset === 'top', run: () => pb.top.click() },
+    { label: 'Iso', checked: preset === 'iso', run: () => pb.iso.click() },
+    { label: 'Persp', checked: preset === 'persp', run: () => pb.persp.click() },
+    { label: 'Wireframe', checked: wire, run: () => btnWire.click() },
+    { label: 'Link cameras', checked: sh.link, run: () => btnLink.click() },
+    ...viewMenu(sh),
+  ]);
   const bar = h('div', { class: 'vp-bar' }, h('span', { class: 'vp-title' }, 'Scene 3D'), h('span', { class: 'sp' }),
-    h('div', { class: 'vp-grp' }, pb.top, pb.iso, pb.persp), btnWire, btnGrid, btnLink, btnOv);
+    h('div', { class: 'vp-grp vp-collapse' }, pb.top, pb.iso, pb.persp), h('div', { class: 'vp-grp vp-collapse' }, btnWire, btnGrid, btnLink, btnOv), more);
   const root = h('div', { class: 'vp' }, bar, wrap);
   const updateBar = () => {
     for (const k in pb) pb[k].classList.toggle('on', preset === k);
@@ -371,7 +406,7 @@ export function scene3d(sh) {
 
   // ---------------------------------------------------------------- frame
   function tick(now) {
-    if (W < 2) return;
+    if (disposed || W < 2) return;
     const t0 = performance.now();
     const revSig = ['campfire', 'wall', 'workbench', 'player', 'tree.0', 'tree.1', 'tree.2', 'rock.0', 'rock.1'].map(k => ctx.bag.models?.rev?.(k) ?? '').join();
     if (revSig !== self.revSig) { self.revSig = revSig; projDirty = true; }
@@ -379,38 +414,47 @@ export function scene3d(sh) {
       const L = store.project.level;
       syncRes(L); syncStructs(L); syncPiles(L);
       playerMesh.geometry = geomOf('player'); playerMesh.position.set(L.player.x, 0, L.player.z); playerMesh.rotation.y = L.player.rot ?? 0;
-      projDirty = false; selDirty = true;
+      projDirty = false; selDirty = true; shadowDirty = true;
     }
     if (selDirty) { syncSel(); syncGizmo(); selDirty = false; }
-    syncOverlays(); updateCamera();
-    floor.visible = sh.grid; outlineGroup.visible = true;
+    if (syncOverlays()) shadowDirty = true;
+    updateCamera();
+    const key = [cam.tx, cam.ty, cam.tz, cam.yaw, cam.el, cam.dist, cam.persp, W, H, sh.grid, wire].join();
+    if (key !== lastKey) { lastKey = key; needDraw = true; }
+    const A = gridAlphas(H / (2 * cam.dist * (cam.persp ? TANH : ORTHO_H)));   // pixels per metre at the target
+    floors.forEach((f, i) => { const a = [A.a1, A.a5, A.a25][i]; f.g.visible = sh.grid && a > 0.01; f.g.material.opacity = f.op * a; });
+    updateBar();
+    // Draw only when something changed, or on the idle refresh.
+    if (!needDraw && now - lastDraw < IDLE_MS) return;
+    needDraw = false;
     ground.uniforms.uTime.value = now / 1000;
     const t = now / 1000;
     for (const [id, g] of structs) if (g.userData.type === 'campfire') { const f = g.getObjectByName('flame'); if (f) f.scale.set(1, 0.9 + 0.2 * Math.sin(t * 9 + g.position.x), 1); }
     fire.forEach((l, i) => { if (l.visible) l.intensity = 2.2 + 0.6 * Math.sin(t * 11 + i * 2); });
-    updateBar();
     const t1 = performance.now();
+    renderer.shadowMap.needsUpdate = shadowDirty; shadowDirty = false;
     renderer.render(scene, cur);
     const t2 = performance.now();
     drawAxis();
-    if (last) push('dt', now - last);
-    push('js', t1 - t0); push('rd', t2 - t1); last = now;
+    if (lastDraw) push('dt', now - lastDraw);
+    lastDraw = now;
+    push('js', t1 - t0); push('rd', t2 - t1);
   }
 
   // ---------------------------------------------------------------- panel
-  new ResizeObserver(resize).observe(wrap);
+  const ro = new ResizeObserver(() => !disposed && resize()); ro.observe(wrap);
   const self = {
     element: root,
     revSig: '',
-    update(why) { if (why === 'project') projDirty = true; if (why !== 'saved') selDirty = true; },
-    dirty() { selDirty = true; },
+    update(why) { if (why === 'project') projDirty = true; if (why !== 'saved') selDirty = true; needDraw = true; },
+    dirty() { selDirty = true; needDraw = true; },
     tick,
     onResize: resize,
     onShow: resize,
     preset: p => setPreset(p),
     toggleProj,
     stats,
-    project: (x, z) => toScreen(x, z),
+    project: (x, z, y) => toScreen(x, z, y),
     centre: () => ({ x: cam.tx, z: cam.tz }),
     where: () => ({ preset, persp: cam.persp, yaw: cam.yaw, el: cam.el, dist: cam.dist, target: [cam.tx, cam.ty, cam.tz] }),
     setCentre(x, z) { cam.tx = x; cam.tz = z; },
@@ -420,8 +464,20 @@ export function scene3d(sh) {
       sh.linkFrom(self, cam.tx, cam.tz);
     },
     dispose() {
+      if (disposed) return; disposed = true;
+      ac.abort(); ro.disconnect(); closePopover();
       sh.views.delete(self); if (sh.v3 === self) sh.v3 = null;
-      tc.dispose(); renderer.dispose();
+      pd = null; marq.hidden = true;
+      tc.detach(); tc.dispose();
+      // Free what this view owns. Shared module caches (MAT, bag model geometry, fallback geometry) stay alive for other views.
+      const shared = new Set(Object.values(MAT));
+      for (const c of geoCache.values()) shared.add(c.geo);
+      scene.traverse(o => {
+        if (o.geometry && !shared.has(o.geometry)) o.geometry.dispose();
+        for (const m of [].concat(o.material ?? [])) if (m && !shared.has(m)) m.dispose();
+      });
+      territory.dispose();
+      renderer.dispose(); renderer.forceContextLoss();
     },
   };
   sh.views.add(self); sh.v3 = self;
