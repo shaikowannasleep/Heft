@@ -350,7 +350,7 @@ function P(geo, color, o = {}) {
   for (let i = 0; i < n; i++) { const y = pos.getY(i); if (y < minY) minY = y; if (y > maxY) maxY = y; }
   const col = new Float32Array(n * 3), base = new THREE.Color(color), jit = o.jit ?? 0.07, grad = o.grad ?? 0.22;
   for (let f = 0; f < n; f += 3) {
-    const j = 1 + (Math.random() - 0.5) * 2 * jit;
+    const j = 1 + ((o.rnd || Math.random)() - 0.5) * 2 * jit;
     for (let k = 0; k < 3 && f + k < n; k++) {
       const i = f + k, ty = maxY > minY ? (pos.getY(i) - minY) / (maxY - minY) : 0.5;
       const sh = j * (1 - grad * 0.5 + grad * ty);
@@ -582,6 +582,31 @@ const STRUCT_GEO = {
     P(box(1.9, 0.05, 0.12), 0x6a3a22, { y: 1.88, z: 0.45, rx: 0.32 }),
   ]),
 };
+// Heft Studio models: a level may carry `models` (recipes from repo-editor src/modeling). Invalid entries are skipped;
+// no `models` leaves the built-in geometry untouched.
+const MODEL_PRIM = { box, cyl, cone, ico, dode }, MODEL_ARGC = { box: 3, cyl: 4, cone: 3, ico: 2, dode: 1 };
+const modelNum = (v, m = 64) => typeof v === 'number' && isFinite(v) && Math.abs(v) <= m;
+const modelVec = (a, n) => Array.isArray(a) && a.length === n && a.every(v => modelNum(v));
+const modelOk = parts => Array.isArray(parts) && parts.length > 0 && parts.length <= 400 && parts.every(p => p && MODEL_PRIM[p.prim]
+  && modelVec(p.args, MODEL_ARGC[p.prim]) && modelVec(p.pos, 3) && modelVec(p.rot, 3) && modelVec(p.scale, 3)
+  && Number.isInteger(p.color) && p.color >= 0 && p.color <= 0xffffff && [p.jit ?? 0, p.grad ?? 0, p.warp ?? 0].every(v => modelNum(v, 2))
+  && (p.seed == null || Number.isInteger(p.seed)) && (p.prim !== 'cyl' && p.prim !== 'cone' || Number.isInteger(p.args[p.prim === 'cyl' ? 3 : 2]) && p.args[p.prim === 'cyl' ? 3 : 2] >= 3 && p.args[p.prim === 'cyl' ? 3 : 2] <= 64)
+  && (p.prim !== 'ico' || Number.isInteger(p.args[1]) && p.args[1] >= 0 && p.args[1] <= 3)
+  && (!p.vx || Object.entries(p.vx).every(([k, d]) => /^\d+$/.test(k) && modelVec(d, 3))));
+function buildModel(parts) {
+  return merge(parts.map(p => {
+    const g = P(MODEL_PRIM[p.prim](...p.args), p.color, { x: p.pos[0], y: p.pos[1], z: p.pos[2], rx: p.rot[0], ry: p.rot[1], rz: p.rot[2],
+      sx: p.scale[0], sy: p.scale[1], sz: p.scale[2], jit: p.jit, grad: p.grad, warp: p.warp, seed: p.seed, rnd: mulberry32(p.seed ?? 7) });
+    const pos = g.attributes.position;
+    for (const [i, d] of Object.entries(p.vx || {})) if (+i < pos.count) pos.setXYZ(+i, pos.getX(+i) + d[0], pos.getY(+i) + d[1], pos.getZ(+i) + d[2]);
+    return g;
+  }));
+}
+function applyModels(models) {
+  if (!models || typeof models !== 'object') return;
+  for (const k of ['tree.0', 'tree.1', 'tree.2', 'rock.0', 'rock.1', 'campfire', 'wall', 'workbench'])
+    if (modelOk(models[k])) { const g = buildModel(models[k]); if (k.includes('.')) (k[0] === 't' ? TREE_GEOS : ROCK_GEOS)[+k[k.length - 1]] = g; else STRUCT_GEO[k] = g; }
+}
 function buildStructure(type) {
   const g = new THREE.Group();
   const m = mesh(STRUCT_GEO[type]); m.receiveShadow = type === 'workbench'; g.add(m);
@@ -1769,6 +1794,7 @@ function clearWorld() {
   for (const p of parts) p.life = 0;
 }
 function applyState(s) {
+  applyModels(s.models);
   clearWorld();
   world.seed = num(s.seed, 1); world.clock = num(s.clock); world.day = Math.max(1, num(s.day, 1) | 0); world.dayTime = clamp(num(s.dayTime, 0.06), 0, 0.9999);
   world.stats = { gathered: 0, built: 0, nights: 0, ...(s.stats || {}) };
