@@ -175,7 +175,7 @@ def hearth_ring(c, loc):
             m.add('box', (0.62 + ring * 0.08, 0.08, 0.42), [0xa29b8d, 0x8f897d, 0xb1aa9b][(i + ring) % 3], x=math.cos(a) * r, y=0.04,
                   z=math.sin(a) * r, ry=-a, bevel=0.03, jit=0.015, grad=0.0, top=0.05)
     for a in (0.6, 2.7, 4.6):
-        m.add('cyl', (0.17, 0.17, 1.3, 8), 0x7a4a2a, x=math.cos(a) * 3.1, y=0.22, z=math.sin(a) * 3.1, rx=math.pi / 2, ry=-a,
+        m.add('cyl', (0.17, 0.17, 1.3, 8), 0x7a4a2a, x=math.cos(a) * 3.1, y=0.22, z=math.sin(a) * 3.1, rz=math.pi / 2, ry=math.pi / 2 - a,
               cap=CUT, bevel=0.02)
         for s in (-0.45, 0.45):
             m.add('box', (0.12, 0.2, 0.3), 0x5a3720, x=math.cos(a) * 3.1 + math.sin(a) * s, y=0.08,

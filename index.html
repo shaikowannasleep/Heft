@@ -117,6 +117,40 @@
     body.touch #loadBox { top: auto; bottom: 168px; left: 50%; width: 60vw; }
     body.touch #prompt { bottom: 220px; }
   }
+
+  #intro { background: radial-gradient(ellipse at 30% 45%, #49412ca6, #151a16f5 80%); color: #f4e7c9; overflow: auto; }
+  .selection { width: min(1060px, 100%); margin: auto; padding: 24px; }
+  .selection-header { display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e6d1a630; padding-bottom:18px; }
+  .selection-logo { font: bold 30px Georgia,serif; letter-spacing:9px; color:#ebbd75; }
+  .selection-eyebrow { font-size:11px; letter-spacing:3px; text-transform:uppercase; color:#c8af86; }
+  .selection h1 { font: normal clamp(30px,4vw,48px) Georgia,serif; margin:25px 0 8px; }
+  .selection-sub { color:#c8bda7; margin:0 0 24px; line-height:1.5; }
+  .selection-layout { display:grid; grid-template-columns: 1.1fr 1fr; gap:36px; align-items:center; }
+  .character-stage { min-height:330px; position:relative; display:grid; place-items:center; background:radial-gradient(ellipse at 50% 65%,#c994452a,transparent 65%); border:1px solid #e6d1a622; border-radius:120px 120px 14px 14px; }
+  .character-stage:after { content:'✦'; position:absolute; top:22px; color:#caa266; }
+  #characterPortrait { width:210px; filter:drop-shadow(0 20px 18px #0006); }
+  .stage-caption { position:absolute; bottom:18px; font-size:10px; letter-spacing:3px; color:#c8af86; }
+  .character-number { color:#d6a35b; letter-spacing:3px; font-size:11px; }
+  #characterName { font:normal 44px Georgia,serif; margin:8px 0; }
+  #characterRole { color:#e7b974; font-size:14px; }
+  #characterDescription { color:#d3c6af; line-height:1.7; min-height:60px; }
+  .character-kit { display:flex; gap:8px; flex-wrap:wrap; margin:18px 0; }
+  .character-kit span { padding:7px 10px; border:1px solid #e6d1a630; border-radius:5px; font-size:12px; color:#d3c6af; }
+  .character-options { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:22px; }
+  .character-option { color:#dfd0b4; background:#e6d1a608; border:1px solid #e6d1a638; box-shadow:none; padding:12px 8px; text-align:left; }
+  .character-option[aria-pressed=true] { border-color:#e8b366; background:#dba95622; box-shadow:inset 0 -3px #dba956; }
+  .character-option svg { width:45px; height:55px; float:left; margin-right:8px; }
+  .character-option strong { display:block; margin-top:6px; font-size:14px; }
+  .character-option small { font-size:10px; color:#bfaf93; }
+  .selection-footer { border-top:1px solid #e6d1a630; margin-top:28px; padding-top:20px; display:flex; justify-content:space-between; gap:20px; align-items:center; }
+  .selection-footer p { color:#bfaf93; font-size:12px; line-height:1.6; margin:0; }
+  .selection .btns { margin:0; justify-content:flex-end; }
+  .selection .btns button { min-width:0; font-size:13px; }
+  .selection button:focus-visible { outline:3px solid #ffe1a2; outline-offset:4px; }
+  .selection details { color:#bfaf93; font-size:12px; margin-top:18px; }
+  .selection details p { line-height:1.8; }
+  @media(max-width:650px) { .selection { padding:10px; } .selection-layout { grid-template-columns:1fr; gap:18px; } .character-stage { min-height:220px; } #characterPortrait { width:145px; } .selection-header .selection-eyebrow { display:none; } .selection h1 { margin-top:18px; } #characterName { font-size:32px; } .selection-footer { flex-direction:column; align-items:stretch; } .selection .btns { justify-content:stretch; } .selection .btns button { flex:1; } .character-option svg { float:none; display:block; margin:auto; } .character-option { text-align:center; } }
+
 </style>
 <script type="importmap">
 { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.min.js" } }
@@ -168,26 +202,20 @@
 </div>
 
 <div id="intro" class="overlay">
-  <div class="card panel">
-    <h1>HEFT</h1>
-    <p class="tag">a micro-survival about the weight of things</p>
-    <p>You are <b>Bram</b>, a builder washed up on a quiet island with an axe, a pick and a sturdy back-frame.</p>
-    <p>Every log and stone you gather is lashed to your back. <b>The higher the stack, the slower you walk.</b>
-      Haul it home to the <b>deposit ring</b> at camp, then spend it on campfires, palisades and workbenches to push your safe territory outward.</p>
-    <p>When night falls, <b>gloomwolves</b> hunt anyone outside the firelight. A heavy builder is a slow builder.</p>
-    <div class="keys" id="introKeys">
-      <b>WASD / Arrows</b><span>Walk (joystick on touch)</span>
-      <b>E / Space / Click</b><span>Chop trees, mine rocks, fend off wolves, use workbench</span>
-      <b>1 · 2 · 3</b><span>Place campfire · palisade · workbench (R rotates)</span>
-      <b>Z / C, Wheel</b><span>Orbit camera, zoom</span>
-      <b>Esc</b><span>Menu: save, download, load</span>
+  <main class="selection" aria-labelledby="selectionTitle">
+    <header class="selection-header"><span class="selection-logo">HEFT</span><span class="selection-eyebrow">A small island. A new beginning.</span></header>
+    <h1 id="selectionTitle">Every journey needs a builder.</h1>
+    <p class="selection-sub">Choose who carries your story. The island is waiting.</p>
+    <div class="selection-layout">
+      <div class="character-stage"><div id="characterPortrait" aria-hidden="true"></div><span class="stage-caption">READY FOR THE UNKNOWN</span></div>
+      <div><span class="character-number" id="characterNumber"></span><div aria-live="polite"><h2 id="characterName"></h2><div id="characterRole"></div><p id="characterDescription"></p></div>
+        <div class="character-kit"><span>Axe & pick</span><span>Carry frame</span><span>Equal abilities</span></div>
+        <div class="character-options" id="characterOptions" role="group" aria-label="Choose your character"></div>
+      </div>
     </div>
-    <div class="btns">
-      <button id="btnContinue" class="primary hidden">Continue</button>
-      <button id="btnNew" class="primary">Begin a new island</button>
-      <button id="btnLoadIntro">Load world_save.json…</button>
-    </div>
-  </div>
+    <footer class="selection-footer"><p>Gather. Haul. Build a place to belong.<br>Stay close to the fire when darkness falls.</p><div class="btns"><button id="btnLoadIntro">Load save</button><button id="btnContinue" class="hidden">Continue</button><button id="btnNew" class="primary">Begin your journey →</button></div></footer>
+    <details id="introKeys"><summary>How to play</summary><p>WASD / Arrows to walk · E / Space / Click to gather · 1 / 2 / 3 to build · Z / C to orbit · Wheel to zoom · Esc for menu.<br>Carry resources back to the deposit ring. Heavy loads slow you down. On mobile, use the joystick and action buttons.</p></details>
+  </main>
 </div>
 
 <div id="menu" class="overlay hidden">
@@ -423,14 +451,15 @@ const RUBBLE_GEO = merge([P(dode(0.18), 0x8f897d, { x: 0.3, y: 0.08, sy: 0.6 }),
   P(dode(0.12), 0x7f7a70, { z: -0.3, y: 0.05, sy: 0.6 })]);
 
 // ---------------------------------------------------------------- the builder (player)
-function buildBuilder() {
+function buildBuilder(palette = {}) {
   const C = { skin: 0xe2a57a, tunic: 0xc4893f, tunicDark: 0x9e6c2e, trousers: 0x5b4634, boots: 0x3a281c, sole: 0x23180f,
     belt: 0x6a3e22, buckle: 0xe0b85a, pouch: 0x8a5a32, hair: 0x6a3a1c, band: 0xa8432c, eye: 0x1d1410, wood: 0x9a6a3c,
-    iron: 0x8e959c, edge: 0xd4d9de, frame: 0x7a5232, rope: 0xcfb07a };
+    iron: 0x8e959c, edge: 0xd4d9de, frame: 0x7a5232, rope: 0xcfb07a, ...palette };
   const root = new THREE.Group();
+  const parts = {}, tag = (name, geo) => { const m = mesh(geo); m.userData.base = geo; parts[name] = m; return m; };   // rig meshes by group, for applyModels
   const leg = side => {
     const g = new THREE.Group(); g.position.set(0.15 * side, 0.92, 0);
-    g.add(mesh(merge([
+    g.add(tag(side > 0 ? 'legL' : 'legR', merge([
       P(box(0.23, 0.5, 0.25), C.trousers, { y: -0.25 }),
       P(box(0.2, 0.3, 0.22), C.trousers, { y: -0.6 }),
       P(box(0.27, 0.07, 0.27), C.boots, { y: -0.67 }),
@@ -441,7 +470,7 @@ function buildBuilder() {
   };
   const legL = leg(1), legR = leg(-1);
   const torso = new THREE.Group(); torso.position.y = 0.92; root.add(torso);
-  torso.add(mesh(merge([
+  torso.add(tag('torso', merge([
     P(box(0.6, 0.24, 0.38), C.tunicDark, { y: 0.04 }),
     P(box(0.6, 0.52, 0.36), C.tunic, { y: 0.42 }),
     P(box(0.72, 0.14, 0.38), C.tunic, { y: 0.63 }),
@@ -468,7 +497,7 @@ function buildBuilder() {
     P(box(0.07, 0.48, 0.03), C.rope, { x: -0.17, y: 0.46, z: 0.185 }),
   ])));
   const head = new THREE.Group(); head.position.y = 0.8; torso.add(head);
-  head.add(mesh(merge([
+  head.add(tag('head', merge([
     P(box(0.34, 0.36, 0.34), C.skin, { y: 0.17 }),
     P(box(0.36, 0.12, 0.36), C.hair, { y: 0.38 }),
     P(box(0.37, 0.08, 0.37), C.band, { y: 0.31 }),
@@ -486,7 +515,7 @@ function buildBuilder() {
   ])));
   const arm = side => {
     const g = new THREE.Group(); g.position.set(0.39 * side, 0.62, 0);
-    g.add(mesh(merge([
+    g.add(tag(side > 0 ? 'armL' : 'armR', merge([
       P(box(0.18, 0.32, 0.19), C.tunic, { y: -0.12 }),
       P(box(0.15, 0.28, 0.16), C.skin, { y: -0.4 }),
       P(box(0.17, 0.1, 0.18), C.belt, { y: -0.46 }),
@@ -496,12 +525,12 @@ function buildBuilder() {
   };
   const armL = arm(1), armR = arm(-1);
   const hand = new THREE.Group(); hand.position.set(0, -0.6, 0.02); armR.add(hand);
-  const axe = mesh(merge([
+  const axe = tag('axe', merge([
     P(cyl(0.03, 0.035, 0.75, 6), C.wood, { rx: Math.PI / 2, z: 0.22 }),
     P(box(0.06, 0.16, 0.17), C.iron, { y: -0.02, z: 0.52 }),
     P(box(0.04, 0.09, 0.22), C.edge, { y: -0.13, z: 0.52 }),
   ]));
-  const pickaxe = mesh(merge([
+  const pickaxe = tag('pickaxe', merge([
     P(cyl(0.03, 0.035, 0.75, 6), C.wood, { rx: Math.PI / 2, z: 0.22 }),
     P(box(0.06, 0.08, 0.1), C.iron, { z: 0.56 }),
     P(cone(0.04, 0.26, 4), C.iron, { y: -0.17, z: 0.56, rx: Math.PI }),
@@ -510,7 +539,7 @@ function buildBuilder() {
   pickaxe.visible = false;
   hand.add(axe, pickaxe);
   const stackRoot = new THREE.Group(); stackRoot.position.set(0, 0.13, -0.47); torso.add(stackRoot);
-  return { root, torso, head, legL, legR, armL, armR, axe, pickaxe, stackRoot };
+  return { root, torso, head, legL, legR, armL, armR, axe, pickaxe, stackRoot, parts };
 }
 
 // ---------------------------------------------------------------- gloomwolf
@@ -583,8 +612,11 @@ const STRUCT_GEO = {
   ]),
 };
 // Heft Studio models: a level may carry `models` (recipes from repo-editor src/modeling). Invalid entries are skipped;
-// no `models` leaves the built-in geometry untouched.
+// a missing or invalid entry gives back the built-in geometry. Player parts name their rig group (g); PIVOT is that
+// group's rest position in the root frame, so animation pivots stay where they are.
 const MODEL_PRIM = { box, cyl, cone, ico, dode }, MODEL_ARGC = { box: 3, cyl: 4, cone: 3, ico: 2, dode: 1 };
+const PIVOT = { root: [0, 0, 0], legL: [0.15, 0.92, 0], legR: [-0.15, 0.92, 0], torso: [0, 0.92, 0], head: [0, 1.72, 0], armL: [0.39, 1.54, 0], armR: [-0.39, 1.54, 0] };
+const MODEL_KEYS = ['tree.0', 'tree.1', 'tree.2', 'rock.0', 'rock.1', 'campfire', 'wall', 'workbench'];
 const modelNum = (v, m = 64) => typeof v === 'number' && isFinite(v) && Math.abs(v) <= m;
 const modelVec = (a, n) => Array.isArray(a) && a.length === n && a.every(v => modelNum(v));
 const modelOk = parts => Array.isArray(parts) && parts.length > 0 && parts.length <= 400 && parts.every(p => p && MODEL_PRIM[p.prim]
@@ -592,20 +624,38 @@ const modelOk = parts => Array.isArray(parts) && parts.length > 0 && parts.lengt
   && Number.isInteger(p.color) && p.color >= 0 && p.color <= 0xffffff && [p.jit ?? 0, p.grad ?? 0, p.warp ?? 0].every(v => modelNum(v, 2))
   && (p.seed == null || Number.isInteger(p.seed)) && (p.prim !== 'cyl' && p.prim !== 'cone' || Number.isInteger(p.args[p.prim === 'cyl' ? 3 : 2]) && p.args[p.prim === 'cyl' ? 3 : 2] >= 3 && p.args[p.prim === 'cyl' ? 3 : 2] <= 64)
   && (p.prim !== 'ico' || Number.isInteger(p.args[1]) && p.args[1] >= 0 && p.args[1] <= 3)
+  && (p.g == null || Object.hasOwn(PIVOT, p.g))
   && (!p.vx || Object.entries(p.vx).every(([k, d]) => /^\d+$/.test(k) && modelVec(d, 3))));
-function buildModel(parts) {
+function buildModel(parts, off = [0, 0, 0]) {
   return merge(parts.map(p => {
-    const g = P(MODEL_PRIM[p.prim](...p.args), p.color, { x: p.pos[0], y: p.pos[1], z: p.pos[2], rx: p.rot[0], ry: p.rot[1], rz: p.rot[2],
+    const g = P(MODEL_PRIM[p.prim](...p.args), p.color, { x: p.pos[0] - off[0], y: p.pos[1] - off[1], z: p.pos[2] - off[2], rx: p.rot[0], ry: p.rot[1], rz: p.rot[2],
       sx: p.scale[0], sy: p.scale[1], sz: p.scale[2], jit: p.jit, grad: p.grad, warp: p.warp, seed: p.seed, rnd: mulberry32(p.seed ?? 7) });
     const pos = g.attributes.position;
     for (const [i, d] of Object.entries(p.vx || {})) if (+i < pos.count) pos.setXYZ(+i, pos.getX(+i) + d[0], pos.getY(+i) + d[1], pos.getZ(+i) + d[2]);
     return g;
   }));
 }
-function applyModels(models) {
-  if (!models || typeof models !== 'object') return;
-  for (const k of ['tree.0', 'tree.1', 'tree.2', 'rock.0', 'rock.1', 'campfire', 'wall', 'workbench'])
-    if (modelOk(models[k])) { const g = buildModel(models[k]); if (k.includes('.')) (k[0] === 't' ? TREE_GEOS : ROCK_GEOS)[+k[k.length - 1]] = g; else STRUCT_GEO[k] = g; }
+const modelSlot = k => k.includes('.') ? (k[0] === 't' ? TREE_GEOS : ROCK_GEOS) : STRUCT_GEO;
+const modelIdx = k => k.includes('.') ? +k[k.length - 1] : k;
+const MODEL_BASE = Object.fromEntries(MODEL_KEYS.map(k => [k, modelSlot(k)[modelIdx(k)]]));
+// Every call starts from the built-in geometry, so a level without models shows the game's own props again.
+function applyModels(models, pl = player) {
+  for (const k of MODEL_KEYS) {
+    const slot = modelSlot(k), i = modelIdx(k), prev = slot[i];
+    slot[i] = models && modelOk(models[k]) ? buildModel(models[k]) : MODEL_BASE[k];
+    if (prev !== MODEL_BASE[k] && prev !== slot[i]) prev.dispose();
+  }
+  applyPlayer(models && modelOk(models.player) ? models.player : null, pl);
+}
+// The rig meshes keep their group and pivot; only their geometry is replaced. The axe and pickaxe are not in the recipe.
+function applyPlayer(parts, pl) {
+  if (parts && !pl.parts.root) { const m = mesh(merge([])); m.userData.base = m.geometry; pl.parts.root = m; pl.root.add(m); }
+  for (const [name, m] of Object.entries(pl.parts)) {
+    if (name === 'axe' || name === 'pickaxe') continue;
+    const next = parts ? buildModel(parts.filter(p => (p.g ?? 'root') === name), PIVOT[name]) : m.userData.base;
+    if (m.geometry !== m.userData.base) m.geometry.dispose();
+    m.geometry = next;
+  }
 }
 function buildStructure(type) {
   const g = new THREE.Group();
@@ -929,7 +979,7 @@ const joy = { id: null, x: 0, y: 0, cx: 0, cy: 0 };
 addEventListener('keydown', e => {
   const k = e.code;
   if (k === 'Escape') { if (placing) cancelPlacing(); else if (craftOpen) closeCraft(); else if (!introOpen) toggleMenu(); return; }
-  if (introOpen) { if (k === 'Enter') startGame(document.getElementById('btnContinue').classList.contains('hidden') ? 'new' : 'continue'); return; }
+  if (introOpen) { if (/^(BUTTON|SUMMARY)$/.test(e.target.tagName)) return; if (k === 'Enter') startGame(document.getElementById('btnContinue').classList.contains('hidden') ? 'new' : 'continue'); return; }
   if (menuOpen || craftOpen) { if (k === 'KeyE' && craftOpen) closeCraft(); return; }
   keys.add(k);
   if (k === 'KeyE' || k === 'Space' || k === 'Enter') { if (!e.repeat) actionEdge = true; actionKey = true; e.preventDefault(); }
@@ -1761,12 +1811,41 @@ function renderCraft() {
 }
 $('craftClose').addEventListener('click', closeCraft);
 
+// Character choices share the same rig and abilities.
+const CHARACTERS = [
+  { id:'bram', name:'Bram', role:'The steadfast builder', description:'A quiet craftsman with a sturdy back and a little hope. For Bram, every log is the beginning of a home.', tunic:'#c4893f', hair:'#6a3a1c', skin:'#e2a57a', band:'#a8432c', palette:{} },
+  { id:'fern', name:'Fern', role:'The woodland wanderer', description:'Most at home beneath the trees. Fern follows the morning light, finding a fresh beginning beyond every bend.', tunic:'#66866a', hair:'#382b25', skin:'#bc805b', band:'#d4b568', palette:{tunic:0x66866a,tunicDark:0x405d48,hair:0x382b25,skin:0xbc805b,band:0xd4b568} },
+  { id:'orin', name:'Orin', role:'The fireside voyager', description:'A traveler with a thousand stories and room for one more. Orin knows that a small fire can make a wild island feel like home.', tunic:'#6c87a5', hair:'#d7c8ae', skin:'#d6a17d', band:'#6c719a', palette:{tunic:0x6c87a5,tunicDark:0x475b79,hair:0xd7c8ae,skin:0xd6a17d,band:0x6c719a} }
+];
+let selectedCharacter = 'bram';
+const characterRigs = new Map([['bram', player.parts], ...CHARACTERS.slice(1).map(c => [c.id, buildBuilder(c.palette).parts])]);
+const characterBases = new Map([...characterRigs].map(([id, parts]) => [id, Object.fromEntries(Object.entries(parts).map(([name,m]) => [name,m.userData.base]))]));
+function portrait(c) {
+  return `<svg viewBox="0 0 200 250" xmlns="http://www.w3.org/2000/svg"><ellipse cx="100" cy="226" rx="76" ry="17" fill="#0d1511" opacity=".6"/><path d="M32 224 55 207 148 207 173 224 150 240 52 240Z" fill="#66644a"/><path d="M49 98V51H57V98M142 98V51H150V98" stroke="#9a6a3c" stroke-width="9"/><path d="M63 166H92V214H59ZM108 166H137L141 214H108Z" fill="#5b4634"/><path d="M58 207H92V225H51V214ZM108 207H141L149 215V225H108Z" fill="#30291f"/><path d="M55 89 76 79H124L145 89 139 168H61Z" fill="${c.tunic}"/><path d="M54 94 38 105 32 147 50 153 66 111M145 94 161 105 168 147 150 153 135 111" fill="${c.tunic}"/><path d="m33 143 17 5-4 20-17-4ZM151 148l17-5 4 21-17 4Z" fill="${c.skin}"/><path d="M68 36 85 24H119L136 38V75L123 89H81L68 76Z" fill="${c.skin}"/><path d="M65 38 76 20H124L139 35V49H65Z" fill="${c.hair}"/><path d="M66 44H138V53H66Z" fill="${c.band}"/><path d="M77 66H83V73H77ZM119 66H125V73H119Z" fill="#2a241d"/><path d="M81 81H123V89L115 96H89Z" fill="${c.hair}"/><path d="M71 98 78 142M126 98 119 142" stroke="#d7bc87" stroke-width="7"/><path d="M59 146H141V158H59Z" fill="#553b29"/><path d="M92 144H108V160H92Z" fill="#dcb365"/><path d="m151 123 8-4 30 77-8 4Z" fill="#9a6a3c"/><path d="m159 129 20-13 16 19-29 9Z" fill="#a5afb0"/><path d="m179 116 16 19-6 3-15-18Z" fill="#dce1d6"/></svg>`;
+}
+function selectCharacter(id) {
+  const c = CHARACTERS.find(c => c.id === id) || CHARACTERS[0];
+  selectedCharacter = c.id;
+  applyPlayer(null, player);
+  for (const [name, geo] of Object.entries(characterBases.get(c.id))) {
+    if (name === 'axe' || name === 'pickaxe') continue;
+    player.parts[name].userData.base = geo; player.parts[name].geometry = geo;
+  }
+  $('characterPortrait').innerHTML = portrait(c);
+  $('characterName').textContent = c.name; $('characterRole').textContent = c.role;
+  $('characterDescription').textContent = c.description;
+  $('characterNumber').textContent = `SURVIVOR 0${CHARACTERS.indexOf(c) + 1} / 03`;
+  for (const b of $('characterOptions').children) b.setAttribute('aria-pressed', String(b.dataset.character === c.id));
+}
+$('characterOptions').innerHTML = CHARACTERS.map(c => `<button class="character-option" data-character="${c.id}" aria-pressed="false">${portrait(c)}<strong>${c.name}</strong><small>${c.role.replace('The ', '')}</small></button>`).join('');
+$('characterOptions').addEventListener('click', e => { const b = e.target.closest('button'); if (b) selectCharacter(b.dataset.character); });
+
 // ---------------------------------------------------------------- save / load
 function serialize() {
   return {
     game: 'Heft', version: SAVE_VERSION, savedAt: new Date().toISOString(),
     seed: world.seed, clock: r2(world.clock), day: world.day, dayTime: r3(world.dayTime),
-    player: { x: r2(player.pos.x), z: r2(player.pos.z), rot: r3(player.rot), hp: Math.round(player.hp) },
+    player: { x: r2(player.pos.x), z: r2(player.pos.z), rot: r3(player.rot), hp: Math.round(player.hp), character: selectedCharacter },
     stack: stack.map(e => e.type),
     stock: { wood: stock.wood + pending.wood, stone: stock.stone + pending.stone },
     upgrades: { ...upgrades },
@@ -1794,6 +1873,7 @@ function clearWorld() {
   for (const p of parts) p.life = 0;
 }
 function applyState(s) {
+  selectCharacter(s.player?.character);
   applyModels(s.models);
   clearWorld();
   world.seed = num(s.seed, 1); world.clock = num(s.clock); world.day = Math.max(1, num(s.day, 1) | 0); world.dayTime = clamp(num(s.dayTime, 0.06), 0, 0.9999);
@@ -1846,7 +1926,7 @@ function generateResources(seed) {
 }
 function newState(seed = (Math.random() * 1e9) | 0) {
   return { game: 'Heft', version: SAVE_VERSION, seed, clock: 0, day: 1, dayTime: 0.06,
-    player: { x: PLAYER_START.x, z: PLAYER_START.z, rot: Math.PI * 0.25, hp: 100 }, stack: [], stock: { wood: 0, stone: 0 },
+    player: { x: PLAYER_START.x, z: PLAYER_START.z, rot: Math.PI * 0.25, hp: 100, character: selectedCharacter }, stack: [], stock: { wood: 0, stone: 0 },
     upgrades: { pack: 0, tool: 0 }, resources: generateResources(seed), structures: [{ type: 'campfire', x: 3.4, z: 2.2, rot: 0 }],
     drops: [], wolves: [], stats: { gathered: 0, built: 0, nights: 0 } };
 }
@@ -1906,6 +1986,7 @@ $('mNew').addEventListener('click', () => {
 });
 function startGame(mode) {
   Sfx.init();
+  if (mode === 'continue') { const state = readLocal(); if (state) applyState(state); }
   if (mode === 'new') { applyState(newState()); saveLocal(); }
   introOpen = false; paused = false; camYawOff = 0;
   $('intro').classList.add('hidden'); ui.hud.classList.remove('hidden');
