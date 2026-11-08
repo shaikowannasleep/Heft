@@ -25,7 +25,7 @@ export function scene2d(sh) {
   // Handle geometry for the current selection: pivot at the bounds centre, R in metres for the rotate ring and scale handle.
   const pivotOf = ids => {
     const b = boundsOf(sh.starts(ids).map(s => ({ x: s.x, z: s.z })));
-    return b && { x: b.cx, z: b.cz, R: Math.max(1.2, Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + 0.8) };
+    return b && { x: b.cx, z: b.cz, R: Math.max(1.2, Math.hypot(b.maxX - b.minX, b.maxZ - b.minZ) / 2 + 0.8), spread: ids.length > 1 };
   };
   const local = e => { const r = canvas.getBoundingClientRect(); return [e.clientX - r.left, e.clientY - r.top]; };
   const px = n => n / cam.scale;   // screen pixels to metres at the current zoom
@@ -40,7 +40,9 @@ export function scene2d(sh) {
 
   function info() {
     const t = store.ui.tool, s = store.ui.snap ? `snap ${store.ui.snapMove} m` : 'snap off';
-    readout.textContent = `x ${cursor[0].toFixed(2)}  z ${cursor[1].toFixed(2)}   ·   ${cam.scale.toFixed(1)} px/m   ·   ${t}   ·   ${s}`;
+    // Edge handles move positions only (layout); the square handle changes each object's s, as Unity's uniform scale does.
+    const hint = t !== 'scale' ? '' : store.selection.length > 1 ? '   ·   edge: spread positions (s unchanged)   ·   square: uniform s' : '   ·   square: uniform s';
+    readout.textContent = `x ${cursor[0].toFixed(2)}  z ${cursor[1].toFixed(2)}   ·   ${cam.scale.toFixed(1)} px/m   ·   ${t}   ·   ${s}${hint}`;
   }
 
   // ---------------------------------------------------------------- input
@@ -230,7 +232,7 @@ export function scene2d(sh) {
       disc(it.x, it.z, it.r + px(3)); c.strokeStyle = COL.sel; c.stroke();
     }
     if (sh.hover && !store.selection.includes(sh.hover) && byId.has(sh.hover)) {
-      const it = byId.get(sh.hover); disc(it.x, it.z, it.r + px(2)); c.strokeStyle = '#8ec5ff'; c.lineWidth = 1; c.stroke();   // thin light blue, apart from the orange selection
+      const it = byId.get(sh.hover); disc(it.x, it.z, it.r + px(2)); c.strokeStyle = '#8ec5ff'; c.lineWidth = 2; c.setLineDash([4, 3]); c.stroke(); c.setLineDash([]);   // dashed light blue: the selection ring is solid orange
     }
     if (sh.gizmos && store.selection.length) {
       const pv = pivotOf(store.selection);
@@ -254,7 +256,8 @@ export function scene2d(sh) {
         if (tool === 'rotate') { disc(pv.x, pv.z, pv.R); c.setLineDash([5, 4]); c.strokeStyle = COL.sel; c.lineWidth = 1.5; c.stroke(); c.setLineDash([]); const [hx, hy] = v.toScreen(pv.x, pv.z - pv.R); c.beginPath(); c.arc(hx, hy, 5, 0, Math.PI * 2); c.fillStyle = COL.sel; c.fill(); }
         if (tool === 'scale') {
           const knob = (name, ax, az) => { const [hx, hy] = v.toScreen(pv.x + ax, pv.z + az), on = lit(name); c.beginPath(); c.moveTo(qx, qy); c.lineTo(hx, hy); c.strokeStyle = on ? '#fff' : COL.sel; c.lineWidth = on ? 2 : 1; c.stroke(); c.fillStyle = on ? '#fff' : COL.sel; c.fillRect(hx - 4, hy - 4, 8, 8); };
-          knob('sx', pv.R, 0); knob('sz', 0, pv.R); knob('u', pv.R * 0.7071, pv.R * 0.7071);
+          if (pv.spread) { knob('sx', pv.R, 0); knob('sz', 0, pv.R); }
+          knob('u', pv.R * 0.7071, pv.R * 0.7071);
         }
         c.beginPath(); c.arc(qx, qy, 3, 0, Math.PI * 2); c.fillStyle = '#fff'; c.fill();
       }

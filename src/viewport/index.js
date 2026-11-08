@@ -8,7 +8,7 @@ export function install(ctx) {
   const { store, data } = ctx;
   const sh = {
     ctx, views: new Set(), v2: null, v3: null,
-    grid: true, gizmos: true, link: false, space: false, hover: null,
+    grid: true, gizmos: true, link: false, space: false, hover: null, animate: false,
     setHover(id) { if (id !== this.hover) { this.hover = id; this.redraw(); } },
     redraw() { for (const v of this.views) v.dirty(); },
     commit(label, starts, op, key) {

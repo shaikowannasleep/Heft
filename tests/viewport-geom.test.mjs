@@ -166,7 +166,7 @@ test('groundHit intersects y = 0 and dollyTarget scales the target about P', () 
 });
 
 test('gizmoHit: move arrows constrain, centre square is free, scale has axis and uniform handles', () => {
-  const pv = { x: 10, z: 5, R: 3 }, m = 0.1;   // 10 px per metre-tenth: 1 px = 0.1 m
+  const pv = { x: 10, z: 5, R: 3, spread: true }, m = 0.1;   // 10 px per metre-tenth: 1 px = 0.1 m
   assert.equal(G.gizmoHit('move', pv, 10, 5, m), 'xz');
   assert.equal(G.gizmoHit('move', pv, 10 + 3, 5 + 0.2, m), 'x');     // along +X, 0.2 m off the axis (2 px) is inside the tolerance
   assert.equal(G.gizmoHit('move', pv, 10 + 2, 5 + 4, m), null);       // nowhere near an arm
@@ -176,6 +176,7 @@ test('gizmoHit: move arrows constrain, centre square is free, scale has axis and
   assert.equal(G.gizmoHit('scale', pv, 10, 5 + 3, m), 'sz');
   assert.equal(G.gizmoHit('scale', pv, 10 + 3 * 0.7071, 5 + 3 * 0.7071, m), 'u');
   assert.equal(G.gizmoHit('scale', pv, 10, 5, m), null);
+  assert.equal(G.gizmoHit('scale', { ...pv, spread: false }, 10 + 3, 5, m), null);   // one object: no edge handles
   assert.equal(G.gizmoHit('rotate', pv, 10 + 3, 5, m), 'rot');
   assert.equal(G.gizmoHit('translate', pv, 10 + 3, 5, m), null);
 });

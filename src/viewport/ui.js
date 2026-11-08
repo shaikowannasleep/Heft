@@ -27,6 +27,7 @@ export function viewMenu(sh) {
   const items = [
     { label: 'Grid', checked: sh.grid, run: () => { sh.grid = !sh.grid; sh.redraw(); } },
     { label: 'Gizmos', checked: sh.gizmos, run: () => { sh.gizmos = !sh.gizmos; sh.redraw(); } },
+    { label: 'Animate water and fire', checked: sh.animate, run: () => { sh.animate = !sh.animate; sh.redraw(); } },
     ...sh.ctx.bag.overlays.map(o => ({ label: o.label, checked: o.enabled, run: () => { o.enabled = !o.enabled; sh.redraw(); } })),
   ];
   return items;

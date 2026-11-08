@@ -50,7 +50,7 @@ export function scene3d(sh) {
   const cam = { tx: 0, ty: 0.5, tz: 0, yaw: PRESET.iso.yaw, el: PRESET.iso.el, dist: 150, persp: false };
   let cur = ortho, preset = 'iso', W = 0, H = 0, projDirty = true, selDirty = true, drag3 = null, gid = 0, wire = false;
   let needDraw = true, shadowDirty = true, lastDraw = 0, lastKey = '';
-  const IDLE_MS = 250;   // redraw this often with nothing changed, so the water and flames keep moving
+  const IDLE_MS = 250;   // with View > Animate water and fire on, redraw this often while nothing changes (off by default: idle costs no GPU frames)
 
   // ---------------------------------------------------------------- ground, water, territory (shared with the fallback module)
   const territory = new THREE.DataTexture(territoryField([], 256, SPAN), 256, 256, THREE.RedFormat, THREE.UnsignedByteType);
@@ -204,10 +204,13 @@ export function scene3d(sh) {
   // ---------------------------------------------------------------- gizmo: TransformControls on a pivot at the selection bounds
   const tc = new TransformControls(cur, cvs), pivot = new THREE.Object3D();
   scene.add(pivot, tc.getHelper());
-  // three keeps three handle sets per mode (gizmo, picker, helper) on its gizmo object (r186). Drop what the tools do not
-  // use, and the 1e6-long guide lines that TransformControls draws across the whole island while dragging.
-  for (const set of [tc._gizmo.gizmo, tc._gizmo.picker, tc._gizmo.helper]) for (const mode in set)
-    for (const o of [...set[mode].children]) if (!KEEP[mode].includes(o.name) || (o.isLine && o.scale.x > 1e5)) o.removeFromParent();
+  // Drop the handles the tools do not use, and the 1e6-long guide lines TransformControls draws across the island while dragging.
+  // shortcut: three r186 keeps its handle sets only on the private tc._gizmo (no public list), so this is skipped if that moves;
+  // upgrade when three exposes the handle sets publicly.
+  for (const set of [tc._gizmo?.gizmo, tc._gizmo?.picker, tc._gizmo?.helper]) for (const mode in set ?? {}) {
+    if (!KEEP[mode]) continue;
+    for (const o of [...(set[mode]?.children ?? [])]) if (!KEEP[mode].includes(o.name) || (o.isLine && o.scale.x > 1e5)) o.removeFromParent();
+  }
   function placePivot() {
     const b = boundsOf(sh.starts(store.selection).map(s => ({ x: s.x, z: s.z })));
     if (!b) return;
@@ -425,7 +428,7 @@ export function scene3d(sh) {
     floors.forEach((f, i) => { const a = [A.a1, A.a5, A.a25][i]; f.g.visible = sh.grid && a > 0.01; f.g.material.opacity = f.op * a; });
     updateBar();
     // Draw only when something changed, or on the idle refresh.
-    if (!needDraw && now - lastDraw < IDLE_MS) return;
+    if (!needDraw && !(sh.animate && now - lastDraw >= IDLE_MS)) return;
     needDraw = false;
     ground.uniforms.uTime.value = now / 1000;
     const t = now / 1000;
@@ -456,7 +459,7 @@ export function scene3d(sh) {
     stats,
     project: (x, z, y) => toScreen(x, z, y),
     centre: () => ({ x: cam.tx, z: cam.tz }),
-    where: () => ({ preset, persp: cam.persp, yaw: cam.yaw, el: cam.el, dist: cam.dist, target: [cam.tx, cam.ty, cam.tz] }),
+    where: () => ({ preset, persp: cam.persp, yaw: cam.yaw, el: cam.el, dist: cam.dist, target: [cam.tx, cam.ty, cam.tz], hover: sh.hover, axis: tc.axis, dragging: tc.dragging }),
     setCentre(x, z) { cam.tx = x; cam.tz = z; },
     frame(b) {
       const span = Math.max(b.maxX - b.minX, b.maxZ - b.minZ, 6) * 1.3 + 2;

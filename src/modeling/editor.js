@@ -38,8 +38,9 @@ export function modelingPanel(ctx, models, exportAll) {
   const own = o => (live.add(o), o);
   const free = o => { if (live.delete(o)) o.dispose(); };
   const ac = new AbortController();
-  let listeners = 0;
-  const on = (t, type, fn, opt = {}) => { listeners++; t.addEventListener(type, fn, { ...opt, signal: ac.signal }); };
+  let listeners = 0;   // live listeners this panel added; abort() gives each one back
+  const on = (t, type, fn, opt = {}) => { listeners++; ac.signal.addEventListener('abort', () => listeners--, { once: true }); t.addEventListener(type, fn, { ...opt, signal: ac.signal }); };
+  const text = (node, s) => { if (node.textContent !== s) node.textContent = s; };   // same text is not re-set: no DOM churn per event
   const S = { key: 'tree.0', part: 0, mode: 'part', sel: new Set(), welds: [], radius: 0.3, wire: false, normals: false,
     grid: true, xray: false, side: true, proj: 'persp', drag: null, dragId: 0, dist: 6 };
   const parts = () => models.recipe(S.key);

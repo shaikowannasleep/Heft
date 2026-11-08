@@ -176,8 +176,8 @@ export function gizmoHit(tool, pv, wx, wz, m) {
   if (tool === 'scale') {
     const near = (ax, az, r) => Math.hypot(wx - (pv.x + ax), wz - (pv.z + az)) < r * m;
     if (near(pv.R * 0.7071, pv.R * 0.7071, 12)) return 'u';
-    if (near(pv.R, 0, 10)) return 'sx';
-    if (near(0, pv.R, 10)) return 'sz';
+    if (pv.spread && near(pv.R, 0, 10)) return 'sx';   // edge handles only exist for 2+ objects: one object's pivot is itself
+    if (pv.spread && near(0, pv.R, 10)) return 'sz';
     return null;
   }
   if (tool === 'rotate') return Math.abs(Math.hypot(dx, dz) - pv.R) < 8 * m ? 'rot' : null;
